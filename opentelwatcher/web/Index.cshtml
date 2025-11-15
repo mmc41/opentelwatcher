@@ -1,0 +1,104 @@
+@page
+@model OpenTelWatcher.Web.IndexModel
+@{
+    ViewData["Title"] = "OpenTelWatcher Status Dashboard";
+}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"]</title>
+    <link rel="stylesheet" href="/web/terminal.css" />
+    <link rel="icon" type="image/svg+xml" href="/web/opentelwatcher-favicon.svg" />
+</head>
+<body>
+    <div class="container">
+        <header>
+            <img src="/web/opentelwatcher.svg" alt="OpenTelWatcher Logo" style="height: 48px; vertical-align: middle;" />
+            <h1 style="display: inline-block; margin-left: 16px;">OpenTelWatcher v@(Model.Version) Status Dashboard</h1>
+        </header>
+
+        <section>
+            <h2>INTRODUCTION</h2>
+            <p>OpenTelWatcher is an OTLP/HTTP receiver for development and testing. It accepts traces, logs, and metrics from OpenTelemetry SDKs and writes them to NDJSON files for inspection and debugging.</p>
+            <p class="warning">⚠️  WARNING: This application does not have authentication enabled. It is designed for local development and testing environments only. Do not expose this service to the internet.</p>
+            <p><strong>How to use:</strong> Configure your OpenTelemetry SDK to send data to the endpoints listed below. The received telemetry will be written to NDJSON files in the configured output directory.</p>
+        </section>
+
+        <section>
+            <h2>OPERATIONAL STATUS</h2>
+            <p><strong>Health:</strong> @Model.HealthInfo.StatusText</p>
+            <p><strong>Uptime:</strong> @Model.HealthInfo.UptimeFormatted</p>
+            <p><strong>Last Updated:</strong> @Model.HealthInfo.LastUpdatedFormatted</p>
+        </section>
+
+        <section>
+            <h2>TELEMETRY RECEIVED</h2>
+            <p><strong>Traces:</strong> @Model.Statistics.TracesFormatted (@Model.Statistics.TracesReceived)</p>
+            <p><strong>Logs:</strong> @Model.Statistics.LogsFormatted (@Model.Statistics.LogsReceived)</p>
+            <p><strong>Metrics:</strong> @Model.Statistics.MetricsFormatted (@Model.Statistics.MetricsReceived)</p>
+        </section>
+
+        <section>
+            <h2>ERRORS</h2>
+            <p><strong>Consecutive Errors:</strong> @Model.Statistics.ConsecutiveErrors</p>
+        </section>
+
+        <section>
+            <h2>STORED FILES</h2>
+            <p><strong>File Count:</strong> @Model.Files.Count</p>
+            <p><strong>Total Size:</strong> @Model.Files.TotalSizeFormatted (@Model.Files.TotalSizeBytes bytes)</p>
+            <p><strong>Clear Data:</strong> Use <code>opentelwatcher clear</code> CLI command or POST to <a href="@Model.Endpoints.ClearEndpoint">@Model.Endpoints.ClearEndpoint</a></p>
+        </section>
+
+        <section>
+            <h2>CONFIGURATION</h2>
+            @if (Model.Configuration.IsAvailable)
+            {
+                <p><strong>Output Directory:</strong> @Model.Configuration.OutputDirectory</p>
+                <p><strong>Max File Size:</strong> @Model.Configuration.MaxFileSizeMB MB</p>
+                <p><strong>Pretty Print:</strong> @Model.Configuration.PrettyPrint</p>
+                <p><strong>Error History Size:</strong> @Model.Configuration.ErrorHistorySize</p>
+                <p><strong>Max Consecutive Errors:</strong> @Model.Configuration.MaxConsecutiveErrors</p>
+                <p><strong>Request Timeout:</strong> @Model.Configuration.RequestTimeoutSeconds seconds</p>
+            }
+            else
+            {
+                <p class="error">@Model.Configuration.ErrorMessage</p>
+            }
+        </section>
+
+        <section>
+            <h2>OTLP ENDPOINTS</h2>
+            <p><strong>Base URL:</strong> @Model.Endpoints.BaseUrl</p>
+            <p><strong>Traces:</strong> @Model.Endpoints.TracesEndpoint</p>
+            <p><strong>Logs:</strong> @Model.Endpoints.LogsEndpoint</p>
+            <p><strong>Metrics:</strong> @Model.Endpoints.MetricsEndpoint</p>
+        </section>
+
+        <section>
+            <h2>DIAGNOSTIC ENDPOINTS</h2>
+            <p><strong>Health Check:</strong> <a href="@Model.Endpoints.HealthEndpoint">@Model.Endpoints.HealthEndpoint</a></p>
+            <p><strong>Diagnostics:</strong> <a href="@Model.Endpoints.DiagnoseEndpoint">@Model.Endpoints.DiagnoseEndpoint</a></p>
+        </section>
+
+        <section>
+            <h2>API DOCUMENTATION</h2>
+            <p><strong>Swagger UI:</strong> <a href="@Model.Endpoints.SwaggerUiEndpoint">@Model.Endpoints.SwaggerUiEndpoint</a> - Interactive API explorer</p>
+            <p><strong>OpenAPI Spec:</strong> <a href="@Model.Endpoints.OpenApiSpecEndpoint">@Model.Endpoints.OpenApiSpecEndpoint</a> - OpenAPI 3.0 JSON specification</p>
+        </section>
+
+        <section>
+            <h2>RESOURCES</h2>
+            <p><strong>GitHub Repository:</strong> <a href="@Model.GitHubUrl" target="_blank">@Model.GitHubUrl</a></p>
+            <p><strong>Documentation:</strong> See README.md in the repository</p>
+        </section>
+
+        <footer>
+            <p>Refresh the page to update statistics.</p>
+        </footer>
+    </div>
+</body>
+</html>

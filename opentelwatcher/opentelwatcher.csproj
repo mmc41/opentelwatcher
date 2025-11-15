@@ -1,0 +1,74 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <Copyright>MIT licence</Copyright>
+    <Authors>mmc41</Authors>
+    <Version>0.5.0</Version>
+    <AssemblyVersion>$(Version)</AssemblyVersion>
+  </PropertyGroup>
+
+  <!-- Publish Configuration: Single-file executable with no external files -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <PublishTrimmed>false</PublishTrimmed>
+    <!-- Disable trimming to ensure all reflection-based features work -->
+    <DebugType>none</DebugType>
+    <!-- Exclude PDB files from publish -->
+    <IsWebConfigTransformDisabled>true</IsWebConfigTransformDisabled>
+    <!-- Disable web.config generation -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Google.Protobuf" Version="3.33.1" />
+    <PackageReference Include="Grpc.Tools" Version="2.76.0">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.0" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.0" />
+    <PackageReference Include="NLog.Web.AspNetCore" Version="6.1.0" />
+    <PackageReference Include="OpenTelemetry.Api.ProviderBuilderExtensions" Version="1.14.0" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.14.0" />
+    <PackageReference Include="Swashbuckle.AspNetCore.SwaggerUI" Version="10.0.1" />
+    <PackageReference Include="System.CommandLine" Version="2.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Protobuf Include="Protos\opentelemetry\proto\**\*.proto" ProtoRoot="Protos" GrpcServices="None" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Embed web static files as resources in the assembly -->
+    <EmbeddedResource Include="web\**\*.css" />
+    <EmbeddedResource Include="web\**\*.svg" />
+  </ItemGroup>
+
+  <!-- Exclude configuration files from publish output (embedded defaults used instead) -->
+  <ItemGroup>
+    <Content Remove="appsettings.json" />
+    <Content Remove="appsettings.*.json" />
+    <None Include="appsettings.json">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+      <CopyToPublishDirectory>Never</CopyToPublishDirectory>
+    </None>
+    <None Include="appsettings.*.json">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+      <CopyToPublishDirectory>Never</CopyToPublishDirectory>
+    </None>
+  </ItemGroup>
+
+  <!-- Exclude unnecessary files from publish output -->
+  <Target Name="CleanupPublishFiles" AfterTargets="Publish">
+    <!-- Delete unwanted files after publish completes -->
+    <Delete Files="$(PublishDir)MvcTestingAppManifest.json" />
+    <Delete Files="$(PublishDir)opentelwatcher.staticwebassets.endpoints.json" />
+  </Target>
+
+</Project>

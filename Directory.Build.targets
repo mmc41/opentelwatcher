@@ -1,0 +1,79 @@
+<Project>
+  <!-- Custom targets that run after test execution -->
+
+  <!-- Clean watcher.pid before running tests so we know that any entries forward are from test -->
+  <Target Name="CleanWatcherPid" BeforeTargets="VSTest" Condition="'$(IsTestProject)' == 'true'">
+    <PropertyGroup>
+      <WatcherExePath>$(MSBuildThisFileDirectory)artifacts\bin\watcher\Debug\watcher.pid</WatcherExePath>
+    </PropertyGroup>
+
+    <!-- Delete watcher.pid if it exists -->
+    <Delete Files="$(WatcherExePath)" Condition="Exists('$(WatcherExePath)')" />
+    <Message Text="Cleaned watcher.pid file before running tests" Importance="High" Condition="Exists('$(WatcherExePath)')" />
+  </Target>
+
+  <!-- Generate coverage summary automatically after tests complete -->
+  <Target Name="GenerateCoverageSummary" AfterTargets="VSTest" Condition="'$(IsTestProject)' == 'true'">
+    <PropertyGroup>
+      <CoverageReportsPath>$(MSBuildThisFileDirectory)artifacts\test-results\**\coverage.cobertura.xml</CoverageReportsPath>
+      <CoverageOutputPath>$(MSBuildThisFileDirectory)artifacts\coverage-report</CoverageOutputPath>
+    </PropertyGroup>
+
+    <!-- Only generate if coverage files exist -->
+    <ItemGroup>
+      <CoverageFiles Include="$(MSBuildThisFileDirectory)artifacts\test-results\**\coverage.cobertura.xml" />
+    </ItemGroup>
+
+    <!-- Generate text summary report -->
+    <Exec Command="dotnet reportgenerator &quot;-reports:$(CoverageReportsPath)&quot; &quot;-targetdir:$(CoverageOutputPath)&quot; &quot;-reporttypes:TextSummary&quot;"
+          Condition="'@(CoverageFiles)' != ''"
+          ContinueOnError="true"
+          IgnoreExitCode="false"
+          ConsoleToMSBuild="true"
+          StandardOutputImportance="Low" />
+
+    <Message Text="Coverage report generated at: $(CoverageOutputPath)\Summary.txt"
+             Condition="'@(CoverageFiles)' != '' AND Exists('$(CoverageOutputPath)\Summary.txt')"
+             Importance="High" />
+  </Target>
+
+  <!-- Check for ungraceful shutdowns after test execution -->
+  <Target Name="CheckUngracefulShutdowns" AfterTargets="GenerateCoverageSummary" Condition="'$(IsTestProject)' == 'true'">
+    <PropertyGroup>
+      <WatcherPidPath>$(MSBuildThisFileDirectory)artifacts\bin\watcher\Debug\watcher.pid</WatcherPidPath>
+    </PropertyGroup>
+
+    <!-- Read PIDs from file if it exists -->
+    <ReadLinesFromFile File="$(WatcherPidPath)" Condition="Exists('$(WatcherPidPath)')">
+      <Output TaskParameter="Lines" ItemName="OrphanedPids" />
+    </ReadLinesFromFile>
+
+    <!-- Emit warnings if watcher.pid exists (indicates ungraceful shutdown) -->
+    <Message Text="WARNING: Ungraceful shutdown(s) detected!"
+             Condition="Exists('$(WatcherPidPath)')"
+             Importance="High" />
+
+    <Message Text="WARNING: watcher.pid file still exists at: $(WatcherPidPath)"
+             Condition="Exists('$(WatcherPidPath)')"
+             Importance="High" />
+
+    <Message Text="WARNING: Orphaned process IDs: @(OrphanedPids, ', ')"
+             Condition="'@(OrphanedPids)' != ''"
+             Importance="High" />
+  </Target>
+
+  <!-- Clean artifacts directory when running 'dotnet clean' -->
+  <Target Name="CleanArtifacts" BeforeTargets="Clean" Condition="'$(CleanArtifactsExecuted)' != 'true'">
+    <PropertyGroup>
+      <ArtifactsPath>$(MSBuildThisFileDirectory)artifacts</ArtifactsPath>
+      <CleanArtifactsExecuted>true</CleanArtifactsExecuted>
+    </PropertyGroup>
+
+    <Message Text="Cleaning artifacts directory: $(ArtifactsPath)" Importance="High" Condition="Exists('$(ArtifactsPath)')" />
+
+    <RemoveDir Directories="$(ArtifactsPath)" Condition="Exists('$(ArtifactsPath)')" />
+
+    <Message Text="Artifacts directory has been removed" Importance="High" />
+  </Target>
+
+</Project>

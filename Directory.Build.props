@@ -1,0 +1,19 @@
+<Project>
+  <!-- Shared properties for all projects in the solution -->
+
+  <PropertyGroup>
+    <!-- Automatically use .runsettings for all test runs -->
+    <RunSettingsFilePath>$(MSBuildThisFileDirectory).runsettings</RunSettingsFilePath>
+
+    <!-- Set default test verbosity to quiet (only shows summary, no individual test results) -->
+    <VSTestVerbosity>quiet</VSTestVerbosity>
+
+    <!-- Centralize build outputs to artifacts folder -->
+    <ArtifactsPath>$(MSBuildThisFileDirectory)artifacts</ArtifactsPath>
+    <BaseOutputPath>$(ArtifactsPath)\bin\$(MSBuildProjectName)\</BaseOutputPath>
+    <BaseIntermediateOutputPath>$(ArtifactsPath)\obj\$(MSBuildProjectName)\</BaseIntermediateOutputPath>
+    <OutputPath>$(BaseOutputPath)$(Configuration)\</OutputPath>
+    <IntermediateOutputPath>$(BaseIntermediateOutputPath)$(Configuration)\</IntermediateOutputPath>
+  </PropertyGroup>
+
+</Project>

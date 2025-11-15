@@ -1,0 +1,18 @@
+# Add any directories, files, or patterns you don't want to be tracked by version control
+bin
+obj
+artifacts
+TestResults
+.ionide
+*.log
+*.bak
+*.ndjson
+node_modules
+
+.claude
+.fake
+tmp
+
+.vscode
+telemetry-data
+

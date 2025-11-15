@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RunSettings>
+  <!-- Configuration for test execution -->
+  <RunConfiguration>
+    <!-- Results directory for test outputs -->
+    <ResultsDirectory>./artifacts/test-results</ResultsDirectory>
+    <!-- Maximum time allowed for test execution (10 minutes) -->
+    <TestSessionTimeout>600000</TestSessionTimeout>
+  </RunConfiguration>
+
+  <!-- Data collection settings for code coverage -->
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <!-- XPlat Code Coverage collector (coverlet) -->
+      <DataCollector friendlyName="XPlat Code Coverage">
+        <Configuration>
+          <!-- Output format: Cobertura XML -->
+          <Format>cobertura</Format>
+          <!-- Include all assemblies by default -->
+          <IncludeDirectory>**</IncludeDirectory>
+          <!-- Exclude test assemblies from coverage -->
+          <Exclude>[*tests]*</Exclude>
+          <!-- Exclude auto-generated files -->
+          <ExcludeByFile>**/Migrations/**,**/*.g.cs,**/*.Designer.cs,**/opentelemetry/Proto/**</ExcludeByFile>
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+
+  <!-- Logger configuration -->
+  <LoggerRunSettings>
+    <Loggers>
+      <!-- TRX logger for Visual Studio Test Results format -->
+      <!-- Auto-generated file names with timestamps prevent overwrites -->
+      <Logger friendlyName="trx" />
+      <!-- Console logger with detailed output -->
+      <Logger friendlyName="console">
+        <Configuration>
+          <Verbosity>normal</Verbosity>
+        </Configuration>
+      </Logger>
+    </Loggers>
+  </LoggerRunSettings>
+</RunSettings>
