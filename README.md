@@ -2,6 +2,10 @@
 
 A minimal, file-based OpenTelemetry collector for local development and testing. Receives OTLP telemetry data over HTTP and persists it as NDJSON files for easy inspection by developers and AI tools.
 
+## Status
+
+[![build](https://github.com/mmc41/opentelwatcher/actions/workflows/build-validation.yml/badge.svg)](https://github.com/mmc41/opentelwatcher/actions/workflows/build-validation.yml)
+
 ## What is OpenTelWatcher?
 
 OpenTelWatcher is a lightweight OTLP receiver designed for **development and testing environments only**. It accepts traces, logs, and metrics from OpenTelemetry-instrumented applications and writes them to human-readable NDJSON files.
