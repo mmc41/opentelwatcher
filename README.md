@@ -39,7 +39,9 @@ OpenTelWatcher is a lightweight OTLP receiver designed for **development and tes
 ## Prerequisites
 
 - [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/9.0) or later
-- No other dependencies required
+- No other runtime dependencies required
+
+**Note:** The build process requires local .NET tools (for test reporting and coverage). Run `dotnet tool restore` once after cloning to install them.
 
 ## Quick Start
 
@@ -48,6 +50,11 @@ OpenTelWatcher is a lightweight OTLP receiver designed for **development and tes
 ```bash
 git clone <repository-url>
 cd opentelwatcher
+
+# Install local .NET tools (required for build/test reporting)
+dotnet tool restore
+
+# Build the solution
 dotnet build
 ```
 
@@ -946,6 +953,21 @@ After configuring your application, verify data is being sent:
    - Java: Set `otel.exporter.otlp.protocol=http/protobuf`
 
 ## Building from Source
+
+### Prerequisites for Building
+
+Before building, install the required .NET local tools:
+
+```bash
+# First time setup (run once after cloning)
+dotnet tool restore
+```
+
+This installs:
+- `dotnet-trx` - Test result reporting tool
+- `dotnet-reportgenerator-globaltool` - Code coverage report generator
+
+These tools are required by the build process for test reporting and coverage analysis.
 
 ### Build All Projects
 
