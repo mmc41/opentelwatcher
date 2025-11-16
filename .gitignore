@@ -9,6 +9,7 @@ TestResults
 *.ndjson
 node_modules
 
+.mcp.json
 .claude
 .fake
 tmp
