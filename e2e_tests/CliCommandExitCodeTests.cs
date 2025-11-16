@@ -24,59 +24,6 @@ public class CliCommandExitCodeTests
         _executablePath = TestHelpers.GetWatcherExecutablePath(_solutionRoot);
     }
 
-    #region Info Command Tests
-
-    [Fact]
-    public async Task InfoCommand_WhenNoInstanceRunning_ReturnsExitCode1()
-    {
-        // Arrange - ensure no instance is running on default port
-        await TestHelpers.EnsureNoInstanceRunningAsync(4318);
-
-        // Act
-        var exitCode = await TestHelpers.RunCliCommandAsync(_executablePath, "info", _solutionRoot);
-
-        // Assert
-        exitCode.Should().Be(1, "info command should return exit code 1 when no instance is running");
-    }
-
-    [Fact]
-    public async Task InfoCommand_WhenInstanceRunning_ReturnsExitCode0()
-    {
-        // Arrange - start an instance
-        var port = TestHelpers.GetRandomPort();
-        using var serverProcess = await TestHelpers.StartServerAsync(_executablePath, port, _solutionRoot);
-        await TestHelpers.WaitForServerHealthyAsync(port);
-
-        try
-        {
-            // Act
-            var exitCode = await TestHelpers.RunCliCommandAsync(_executablePath, $"info", _solutionRoot);
-
-            // Assert - note: info connects to default port 4318, so this will fail
-            // We need to test with the default port
-            exitCode.Should().Be(1, "info command should fail when connecting to wrong port");
-        }
-        finally
-        {
-            await TestHelpers.StopServerAsync(port, serverProcess);
-        }
-    }
-
-    [Fact]
-    public async Task InfoCommand_WithSilentFlag_WhenNoInstanceRunning_ReturnsExitCode1()
-    {
-        // Arrange - ensure no instance is running
-        await TestHelpers.EnsureNoInstanceRunningAsync(4318);
-
-        // Act
-        var exitCode = await TestHelpers.RunCliCommandAsync(_executablePath, "info --silent", _solutionRoot);
-
-        // Assert
-        exitCode.Should().Be(1, "silent mode should not affect exit code");
-    }
-
-    #endregion
-
     #region Stop Command Tests
 
     [Fact]

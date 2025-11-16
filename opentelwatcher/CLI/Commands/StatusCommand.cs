@@ -7,7 +7,21 @@ using OpenTelWatcher.Utilities;
 namespace OpenTelWatcher.CLI.Commands;
 
 /// <summary>
-/// Status command - provides quick one-line health summary
+/// Unified Status command - provides health summary, detailed statistics, or error detection
+/// Supports dual-mode operation: API mode (instance running) and filesystem mode (standalone)
+///
+/// Modes:
+/// - Default: Full diagnostic information (version, health, config, files, stats)
+/// - --errors-only: Show only error-related information
+/// - --stats-only: Show only telemetry and file statistics
+/// - --verbose: Show detailed diagnostic information
+/// - --quiet: Suppress output, only exit code
+/// - --output-dir: Force filesystem mode (scan directory for errors)
+///
+/// Exit codes:
+/// - 0: Healthy (no errors detected)
+/// - 1: Unhealthy (errors detected)
+/// - 2: System error (failed to retrieve information)
 /// </summary>
 public sealed class StatusCommand
 {
@@ -18,68 +32,296 @@ public sealed class StatusCommand
         _apiClient = apiClient;
     }
 
-    public async Task<CommandResult> ExecuteAsync(bool silent = false, bool jsonOutput = false)
+    public async Task<CommandResult> ExecuteAsync(
+        bool errorsOnly = false,
+        bool statsOnly = false,
+        bool verbose = false,
+        bool quiet = false,
+        bool jsonOutput = false,
+        string? outputDir = null)
     {
         var result = new Dictionary<string, object>();
         var cliVersion = Assembly.GetExecutingAssembly().GetName().Version ?? new Version(1, 0, 0);
 
-        // Step 1: Check if instance is running
+        // Determine mode: API or Filesystem
+        // If --output-dir is specified, force filesystem mode
+        // Otherwise, try API mode first, fallback to filesystem if no instance running
+
+        if (!string.IsNullOrWhiteSpace(outputDir))
+        {
+            // Explicit filesystem mode
+            return await ExecuteFilesystemModeAsync(outputDir, quiet, jsonOutput);
+        }
+
+        // Try API mode first
         var status = await _apiClient.GetInstanceStatusAsync(cliVersion);
         if (!status.IsRunning)
         {
-            return BuildNoInstanceRunningResult(result, silent, jsonOutput);
+            // No instance running - this is an error for API mode
+            // (User can use --output-dir to force filesystem mode)
+            return BuildNoInstanceRunningResult(result, quiet, jsonOutput);
         }
 
-        // Step 2: Get instance info
-        var info = await _apiClient.GetInfoAsync();
+        // API mode - get full status
+        var info = await _apiClient.GetStatusAsync();
         if (info is null)
         {
-            return BuildFailedToRetrieveInfoResult(result, silent, jsonOutput);
+            return BuildFailedToRetrieveInfoResult(result, quiet, jsonOutput);
         }
 
-        // Step 3: Build success result
-        return BuildSuccessResult(result, info, silent, jsonOutput);
+        // Build result based on flags
+        if (errorsOnly)
+        {
+            return BuildErrorsOnlyResult(result, status, info, verbose, quiet, jsonOutput);
+        }
+        else if (statsOnly)
+        {
+            return BuildStatsOnlyResult(result, info, quiet, jsonOutput);
+        }
+        else if (verbose)
+        {
+            return BuildVerboseResult(result, status, info, quiet, jsonOutput);
+        }
+        else
+        {
+            // Default: Full diagnostic information (InfoCommand style)
+            return BuildFullInfoResult(result, status, info, quiet, jsonOutput);
+        }
     }
 
-    private CommandResult BuildNoInstanceRunningResult(Dictionary<string, object> result, bool silent, bool jsonOutput)
+    /// <summary>
+    /// Filesystem mode: Scan directory for error files (CheckCommand functionality)
+    /// </summary>
+    private async Task<CommandResult> ExecuteFilesystemModeAsync(string outputDir, bool quiet, bool jsonOutput)
+    {
+        var result = new Dictionary<string, object>();
+
+        // Check if directory exists
+        if (!Directory.Exists(outputDir))
+        {
+            // Non-existent directory means no error files
+            result["success"] = true;
+            result["mode"] = "filesystem";
+            result["hasErrors"] = false;
+            result["errorFileCount"] = 0;
+            result["errorFiles"] = Array.Empty<string>();
+            result["outputDirectory"] = outputDir;
+
+            OutputFilesystemResult(result, jsonOutput, quiet, hasErrors: false);
+            return await Task.FromResult(CommandResult.Success("No errors"));
+        }
+
+        // Find all error files
+        var errorFiles = Directory.GetFiles(outputDir, "*.errors.ndjson")
+            .Select(Path.GetFileName)
+            .Where(name => name != null)
+            .Cast<string>()
+            .OrderBy(name => name)
+            .ToList();
+
+        var hasErrors = errorFiles.Count > 0;
+
+        result["success"] = true;
+        result["mode"] = "filesystem";
+        result["hasErrors"] = hasErrors;
+        result["errorFileCount"] = errorFiles.Count;
+        result["errorFiles"] = errorFiles;
+        result["outputDirectory"] = outputDir;
+
+        OutputFilesystemResult(result, jsonOutput, quiet, hasErrors);
+
+        return hasErrors
+            ? await Task.FromResult(CommandResult.UserError("Errors detected"))
+            : await Task.FromResult(CommandResult.Success("No errors"));
+    }
+
+    private CommandResult BuildNoInstanceRunningResult(Dictionary<string, object> result, bool quiet, bool jsonOutput)
     {
         result["success"] = false;
         result["error"] = "No instance running";
         result["message"] = "No OpenTelWatcher instance is currently running.";
+        result["hint"] = "Use --output-dir to scan a directory for errors without a running instance.";
 
-        OutputResult(result, jsonOutput, silent, isError: true, errorType: "No instance running");
+        OutputResult(result, jsonOutput, quiet, isError: true, errorType: "No instance running");
         return CommandResult.SystemError("No instance running");
     }
 
-    private CommandResult BuildFailedToRetrieveInfoResult(Dictionary<string, object> result, bool silent, bool jsonOutput)
+    private CommandResult BuildFailedToRetrieveInfoResult(Dictionary<string, object> result, bool quiet, bool jsonOutput)
     {
         result["success"] = false;
         result["error"] = "Failed to retrieve application information";
 
-        OutputResult(result, jsonOutput, silent, isError: true, errorType: "Failed to retrieve info");
+        OutputResult(result, jsonOutput, quiet, isError: true, errorType: "Failed to retrieve info");
         return CommandResult.SystemError("Failed to retrieve info");
     }
 
-    private CommandResult BuildSuccessResult(Dictionary<string, object> result, InfoResponse info, bool silent, bool jsonOutput)
+    /// <summary>
+    /// Default mode: Full diagnostic information (InfoCommand style)
+    /// </summary>
+    private CommandResult BuildFullInfoResult(Dictionary<string, object> result, InstanceStatus status, StatusResponse info, bool quiet, bool jsonOutput)
     {
-        var fileCount = info.Files.Count;
-        var totalSizeBytes = info.Files.TotalSizeBytes;
-        var outputDirectory = info.Configuration.OutputDirectory;
-
-        // Count error files by scanning the output directory
-        var errorFileCount = CountErrorFiles(outputDirectory);
+        var errorFileCount = CountErrorFiles(info.Configuration.OutputDirectory);
         var healthy = errorFileCount == 0;
 
         result["success"] = true;
+        result["mode"] = "api";
         result["healthy"] = healthy;
-        result["fileCount"] = fileCount;
+        result["compatible"] = status.IsCompatible;
+        if (!status.IsCompatible)
+        {
+            result["incompatibilityReason"] = status.IncompatibilityReason!;
+        }
+        result["version"] = info.Version;
+        result["port"] = info.Port;
+        result["processId"] = info.ProcessId;
+        result["uptimeSeconds"] = info.UptimeSeconds;
+        result["outputDirectory"] = info.Configuration.OutputDirectory;
+        result["fileCount"] = info.Files.Count;
+        result["totalSizeBytes"] = info.Files.TotalSizeBytes;
         result["errorFileCount"] = errorFileCount;
-        result["totalSizeBytes"] = totalSizeBytes;
-        result["outputDirectory"] = outputDirectory;
+        result["healthStatus"] = info.Health.Status;
+        result["consecutiveErrors"] = info.Health.ConsecutiveErrors;
+        result["recentErrors"] = info.Health.RecentErrors;
 
-        OutputResult(result, jsonOutput, silent, isError: false);
+        OutputResult(result, jsonOutput, quiet, isError: false, outputMode: "full", status: status, info: info);
 
-        // Return appropriate exit code
+        return healthy
+            ? CommandResult.Success("Healthy")
+            : CommandResult.UserError("Unhealthy");
+    }
+
+    /// <summary>
+    /// --errors-only mode: Show only error-related information
+    /// </summary>
+    private CommandResult BuildErrorsOnlyResult(Dictionary<string, object> result, InstanceStatus status, StatusResponse info, bool verbose, bool quiet, bool jsonOutput)
+    {
+        var errorFileCount = CountErrorFiles(info.Configuration.OutputDirectory);
+        var healthy = errorFileCount == 0;
+
+        result["success"] = true;
+        result["mode"] = "api";
+        result["healthy"] = healthy;
+        result["errorFileCount"] = errorFileCount;
+        result["healthStatus"] = info.Health.Status;
+        result["consecutiveErrors"] = info.Health.ConsecutiveErrors;
+        result["recentErrors"] = info.Health.RecentErrors;
+        result["outputDirectory"] = info.Configuration.OutputDirectory;
+
+        if (verbose)
+        {
+            // Include error file list
+            var errorFiles = GetErrorFiles(info.Configuration.OutputDirectory);
+            result["errorFiles"] = errorFiles;
+        }
+
+        OutputResult(result, jsonOutput, quiet, isError: false, outputMode: "errors", status: status, info: info, verbose: verbose);
+
+        return healthy
+            ? CommandResult.Success("No errors")
+            : CommandResult.UserError("Errors detected");
+    }
+
+    /// <summary>
+    /// --stats-only mode: Show only telemetry and file statistics
+    /// </summary>
+    private CommandResult BuildStatsOnlyResult(Dictionary<string, object> result, StatusResponse info, bool quiet, bool jsonOutput)
+    {
+        result["success"] = true;
+        result["mode"] = "api";
+        result["telemetry"] = new Dictionary<string, object>
+        {
+            ["traces"] = new Dictionary<string, object> { ["requests"] = info.Telemetry.Traces.Requests },
+            ["logs"] = new Dictionary<string, object> { ["requests"] = info.Telemetry.Logs.Requests },
+            ["metrics"] = new Dictionary<string, object> { ["requests"] = info.Telemetry.Metrics.Requests }
+        };
+        result["files"] = new Dictionary<string, object>
+        {
+            ["count"] = info.Files.Count,
+            ["totalSizeBytes"] = info.Files.TotalSizeBytes,
+            ["breakdown"] = new Dictionary<string, object>
+            {
+                ["traces"] = new Dictionary<string, object>
+                {
+                    ["count"] = info.Files.Breakdown.Traces.Count,
+                    ["sizeBytes"] = info.Files.Breakdown.Traces.SizeBytes
+                },
+                ["logs"] = new Dictionary<string, object>
+                {
+                    ["count"] = info.Files.Breakdown.Logs.Count,
+                    ["sizeBytes"] = info.Files.Breakdown.Logs.SizeBytes
+                },
+                ["metrics"] = new Dictionary<string, object>
+                {
+                    ["count"] = info.Files.Breakdown.Metrics.Count,
+                    ["sizeBytes"] = info.Files.Breakdown.Metrics.SizeBytes
+                }
+            }
+        };
+        result["uptimeSeconds"] = info.UptimeSeconds;
+
+        OutputResult(result, jsonOutput, quiet, isError: false, outputMode: "stats", info: info);
+        return CommandResult.Success("Stats retrieved");
+    }
+
+    /// <summary>
+    /// --verbose mode: Show detailed diagnostic information
+    /// </summary>
+    private CommandResult BuildVerboseResult(Dictionary<string, object> result, InstanceStatus status, StatusResponse info, bool quiet, bool jsonOutput)
+    {
+        var errorFileCount = CountErrorFiles(info.Configuration.OutputDirectory);
+        var healthy = errorFileCount == 0;
+
+        result["success"] = true;
+        result["mode"] = "api";
+        result["healthy"] = healthy;
+        result["compatible"] = status.IsCompatible;
+        if (!status.IsCompatible)
+        {
+            result["incompatibilityReason"] = status.IncompatibilityReason!;
+        }
+        result["version"] = info.Version;
+        result["port"] = info.Port;
+        result["processId"] = info.ProcessId;
+        result["uptimeSeconds"] = info.UptimeSeconds;
+        result["outputDirectory"] = info.Configuration.OutputDirectory;
+        result["errorFileCount"] = errorFileCount;
+        result["errorFiles"] = GetErrorFiles(info.Configuration.OutputDirectory);
+        result["healthStatus"] = info.Health.Status;
+        result["consecutiveErrors"] = info.Health.ConsecutiveErrors;
+        result["recentErrors"] = info.Health.RecentErrors;
+        result["telemetry"] = new Dictionary<string, object>
+        {
+            ["traces"] = new Dictionary<string, object> { ["requests"] = info.Telemetry.Traces.Requests },
+            ["logs"] = new Dictionary<string, object> { ["requests"] = info.Telemetry.Logs.Requests },
+            ["metrics"] = new Dictionary<string, object> { ["requests"] = info.Telemetry.Metrics.Requests }
+        };
+        result["files"] = new Dictionary<string, object>
+        {
+            ["count"] = info.Files.Count,
+            ["totalSizeBytes"] = info.Files.TotalSizeBytes,
+            ["breakdown"] = new Dictionary<string, object>
+            {
+                ["traces"] = new Dictionary<string, object>
+                {
+                    ["count"] = info.Files.Breakdown.Traces.Count,
+                    ["sizeBytes"] = info.Files.Breakdown.Traces.SizeBytes
+                },
+                ["logs"] = new Dictionary<string, object>
+                {
+                    ["count"] = info.Files.Breakdown.Logs.Count,
+                    ["sizeBytes"] = info.Files.Breakdown.Logs.SizeBytes
+                },
+                ["metrics"] = new Dictionary<string, object>
+                {
+                    ["count"] = info.Files.Breakdown.Metrics.Count,
+                    ["sizeBytes"] = info.Files.Breakdown.Metrics.SizeBytes
+                }
+            }
+        };
+        result["configuration"] = info.Configuration;
+
+        OutputResult(result, jsonOutput, quiet, isError: false, outputMode: "verbose", status: status, info: info);
+
         return healthy
             ? CommandResult.Success("Healthy")
             : CommandResult.UserError("Unhealthy");
@@ -102,7 +344,29 @@ public sealed class StatusCommand
         }
     }
 
-    private void OutputResult(Dictionary<string, object> result, bool jsonOutput, bool silent, bool isError, string? errorType = null)
+    private List<string> GetErrorFiles(string outputDirectory)
+    {
+        try
+        {
+            if (!Directory.Exists(outputDirectory))
+            {
+                return new List<string>();
+            }
+
+            return Directory.GetFiles(outputDirectory, "*.errors.ndjson", SearchOption.TopDirectoryOnly)
+                .Select(Path.GetFileName)
+                .Where(name => name != null)
+                .Cast<string>()
+                .OrderBy(name => name)
+                .ToList();
+        }
+        catch
+        {
+            return new List<string>();
+        }
+    }
+
+    private void OutputFilesystemResult(Dictionary<string, object> result, bool jsonOutput, bool quiet, bool hasErrors)
     {
         if (jsonOutput)
         {
@@ -110,7 +374,47 @@ public sealed class StatusCommand
             return;
         }
 
-        if (silent)
+        if (quiet)
+        {
+            return;
+        }
+
+        var errorFileCount = (int)result["errorFileCount"];
+        var outputDir = (string)result["outputDirectory"];
+
+        if (!hasErrors)
+        {
+            Console.WriteLine($"✓ No error files found in {outputDir}");
+        }
+        else
+        {
+            Console.WriteLine($"✗ {errorFileCount} error file{(errorFileCount != 1 ? "s" : "")} detected in {outputDir}");
+            var errorFiles = (List<string>)result["errorFiles"];
+            foreach (var file in errorFiles)
+            {
+                Console.WriteLine($"  - {file}");
+            }
+        }
+    }
+
+    private void OutputResult(
+        Dictionary<string, object> result,
+        bool jsonOutput,
+        bool quiet,
+        bool isError,
+        string? errorType = null,
+        string? outputMode = null,
+        InstanceStatus? status = null,
+        StatusResponse? info = null,
+        bool verbose = false)
+    {
+        if (jsonOutput)
+        {
+            Console.WriteLine(JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));
+            return;
+        }
+
+        if (quiet)
         {
             return;
         }
@@ -121,7 +425,21 @@ public sealed class StatusCommand
         }
         else
         {
-            OutputSuccessText(result);
+            switch (outputMode)
+            {
+                case "full":
+                    OutputFullInfoText(result, status!, info!);
+                    break;
+                case "errors":
+                    OutputErrorsOnlyText(result, verbose);
+                    break;
+                case "stats":
+                    OutputStatsOnlyText(result);
+                    break;
+                case "verbose":
+                    OutputVerboseText(result, status!, info!);
+                    break;
+            }
         }
     }
 
@@ -131,6 +449,11 @@ public sealed class StatusCommand
         {
             case "No instance running":
                 Console.WriteLine((string)result["message"]);
+                if (result.ContainsKey("hint"))
+                {
+                    Console.WriteLine();
+                    Console.WriteLine($"Hint: {result["hint"]}");
+                }
                 break;
 
             case "Failed to retrieve info":
@@ -139,21 +462,131 @@ public sealed class StatusCommand
         }
     }
 
-    private void OutputSuccessText(Dictionary<string, object> result)
+    private void OutputFullInfoText(Dictionary<string, object> result, InstanceStatus status, StatusResponse info)
+    {
+        if (!status.IsCompatible)
+        {
+            Console.WriteLine("Warning: Incompatible version detected");
+            Console.WriteLine($"  {result["incompatibilityReason"]}");
+            Console.WriteLine();
+            Console.WriteLine("Information may be unreliable.");
+            Console.WriteLine();
+        }
+
+        var config = new ApplicationInfoConfig
+        {
+            Version = info.Version,
+            Port = info.Port,
+            OutputDirectory = info.Configuration.OutputDirectory,
+            ProcessId = info.ProcessId,
+            HealthStatus = info.Health.Status,
+            ConsecutiveErrors = info.Health.ConsecutiveErrors,
+            RecentErrors = info.Health.RecentErrors,
+            FileCount = info.Files.Count,
+            TotalFileSize = info.Files.TotalSizeBytes,
+            Silent = false,
+            Verbose = false
+        };
+
+        ApplicationInfoDisplay.Display(DisplayMode.Info, config);
+    }
+
+    private void OutputErrorsOnlyText(Dictionary<string, object> result, bool verbose)
     {
         var healthy = (bool)result["healthy"];
-        var fileCount = (int)result["fileCount"];
         var errorFileCount = (int)result["errorFileCount"];
-        var totalSizeBytes = (long)result["totalSizeBytes"];
+        var healthStatus = (string)result["healthStatus"];
+        var consecutiveErrors = (int)result["consecutiveErrors"];
+        var recentErrors = (int)result["recentErrors"];
 
         var healthIcon = healthy ? "✓" : "✗";
-        var healthStatus = healthy ? "Healthy" : "Unhealthy";
-        var totalSize = NumberFormatter.FormatBytes(totalSizeBytes);
-        var errorInfo = healthy
-            ? "No errors"
-            : $"{errorFileCount} ERROR FILE{(errorFileCount != 1 ? "S" : "")} DETECTED";
+        var healthText = healthy ? "Healthy" : "Unhealthy";
 
-        // One-line summary format
-        Console.WriteLine($"{healthIcon} {healthStatus} | {fileCount} file{(fileCount != 1 ? "s" : "")} ({totalSize}) | {errorInfo}");
+        Console.WriteLine($"{healthIcon} {healthText}");
+        Console.WriteLine();
+        Console.WriteLine("Error Summary:");
+        Console.WriteLine($"  Error files:         {errorFileCount}");
+        Console.WriteLine($"  Health status:       {healthStatus}");
+        Console.WriteLine($"  Consecutive errors:  {consecutiveErrors}");
+        Console.WriteLine($"  Recent errors:       {recentErrors}");
+
+        if (verbose && result.ContainsKey("errorFiles"))
+        {
+            var errorFiles = (List<string>)result["errorFiles"];
+            if (errorFiles.Count > 0)
+            {
+                Console.WriteLine();
+                Console.WriteLine("Error Files:");
+                foreach (var file in errorFiles)
+                {
+                    Console.WriteLine($"  - {file}");
+                }
+            }
+        }
+    }
+
+    private void OutputStatsOnlyText(Dictionary<string, object> result)
+    {
+        var telemetry = (Dictionary<string, object>)result["telemetry"];
+        var files = (Dictionary<string, object>)result["files"];
+        var uptimeSeconds = (long)result["uptimeSeconds"];
+
+        var tracesReq = (long)((Dictionary<string, object>)telemetry["traces"])["requests"];
+        var logsReq = (long)((Dictionary<string, object>)telemetry["logs"])["requests"];
+        var metricsReq = (long)((Dictionary<string, object>)telemetry["metrics"])["requests"];
+
+        var fileCount = (int)files["count"];
+        var totalSize = (long)files["totalSizeBytes"];
+        var breakdown = (Dictionary<string, object>)files["breakdown"];
+
+        var tracesFiles = (Dictionary<string, object>)breakdown["traces"];
+        var logsFiles = (Dictionary<string, object>)breakdown["logs"];
+        var metricsFiles = (Dictionary<string, object>)breakdown["metrics"];
+
+        var tracesCount = (int)tracesFiles["count"];
+        var tracesSize = (long)tracesFiles["sizeBytes"];
+        var logsCount = (int)logsFiles["count"];
+        var logsSize = (long)logsFiles["sizeBytes"];
+        var metricsCount = (int)metricsFiles["count"];
+        var metricsSize = (long)metricsFiles["sizeBytes"];
+
+        Console.WriteLine("Telemetry Statistics:");
+        Console.WriteLine($"  Traces received:  {tracesReq,6} request{(tracesReq != 1 ? "s" : " ")}");
+        Console.WriteLine($"  Logs received:    {logsReq,6} request{(logsReq != 1 ? "s" : " ")}");
+        Console.WriteLine($"  Metrics received: {metricsReq,6} request{(metricsReq != 1 ? "s" : " ")}");
+        Console.WriteLine();
+        Console.WriteLine($"Files: {fileCount} ({NumberFormatter.FormatBytes(totalSize)})");
+        Console.WriteLine($"  traces:  {tracesCount,3} file{(tracesCount != 1 ? "s" : " ")} ({NumberFormatter.FormatBytes(tracesSize)})");
+        Console.WriteLine($"  logs:    {logsCount,3} file{(logsCount != 1 ? "s" : " ")} ({NumberFormatter.FormatBytes(logsSize)})");
+        Console.WriteLine($"  metrics: {metricsCount,3} file{(metricsCount != 1 ? "s" : " ")} ({NumberFormatter.FormatBytes(metricsSize)})");
+        Console.WriteLine();
+        Console.WriteLine($"Uptime: {UptimeFormatter.FormatUptime(TimeSpan.FromSeconds(uptimeSeconds))}");
+    }
+
+    private void OutputVerboseText(Dictionary<string, object> result, InstanceStatus status, StatusResponse info)
+    {
+        if (!status.IsCompatible)
+        {
+            Console.WriteLine("Warning: Incompatible version detected");
+            Console.WriteLine($"  {result["incompatibilityReason"]}");
+            Console.WriteLine();
+        }
+
+        var config = new ApplicationInfoConfig
+        {
+            Version = info.Version,
+            Port = info.Port,
+            OutputDirectory = info.Configuration.OutputDirectory,
+            ProcessId = info.ProcessId,
+            HealthStatus = info.Health.Status,
+            ConsecutiveErrors = info.Health.ConsecutiveErrors,
+            RecentErrors = info.Health.RecentErrors,
+            FileCount = info.Files.Count,
+            TotalFileSize = info.Files.TotalSizeBytes,
+            Silent = false,
+            Verbose = true
+        };
+
+        ApplicationInfoDisplay.Display(DisplayMode.Info, config);
     }
 }

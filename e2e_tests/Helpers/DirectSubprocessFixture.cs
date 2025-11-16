@@ -19,7 +19,7 @@ namespace OpenTelWatcher.Tests.E2E;
 /// 1. Constructor - synchronous initialization
 /// 2. InitializeAsync - starts subprocess directly and waits for health check
 /// 3. [All tests in collection execute]
-/// 4. DisposeAsync - graceful shutdown via /api/shutdown
+/// 4. DisposeAsync - graceful shutdown via /api/stop
 /// 5. Dispose - force kill if still running
 /// </summary>
 public class DirectSubprocessFixture : OpenTelWatcherServerFixtureBase

@@ -372,15 +372,26 @@ public class WebApplicationHost : IWebApplicationHost
             .WithTags("API")
             .AddOpenApiOperationTransformer((operation, context, ct) => Task.CompletedTask);
 
-        // Info endpoint - combines version and diagnostics
-        apiGroup.MapGet("/info", (
+        // Status endpoint - combines version, diagnostics, and statistics
+        apiGroup.MapGet("/status", (
             IDiagnosticsCollector diagnostics,
+            ITelemetryStatistics telemetryStats,
             [System.ComponentModel.Description("Optional signal type filter (traces, logs, or metrics)")]
             string? signal) =>
         {
             var assembly = Assembly.GetExecutingAssembly();
             var version = assembly.GetName().Version ?? new Version(1, 0, 0);
             var fileInfos = diagnostics.GetFileInfo(signal);
+
+            // Calculate uptime
+            var processStartTime = Process.GetCurrentProcess().StartTime;
+            var uptimeSeconds = (long)(DateTime.Now - processStartTime).TotalSeconds;
+
+            // Get file breakdown by type
+            var allFiles = diagnostics.GetFileInfo(null);
+            var traceFiles = allFiles.Where(f => f.Path.Contains("traces.", StringComparison.OrdinalIgnoreCase)).ToList();
+            var logFiles = allFiles.Where(f => f.Path.Contains("logs.", StringComparison.OrdinalIgnoreCase)).ToList();
+            var metricFiles = allFiles.Where(f => f.Path.Contains("metrics.", StringComparison.OrdinalIgnoreCase)).ToList();
 
             return Results.Json(new
             {
@@ -394,44 +405,13 @@ public class WebApplicationHost : IWebApplicationHost
                 },
                 processId = Environment.ProcessId,
                 port = port,
+                uptimeSeconds = uptimeSeconds,
                 health = new
                 {
                     status = diagnostics.GetHealthStatus().ToString().ToLowerInvariant(),
                     consecutiveErrors = diagnostics.GetConsecutiveErrorCount(),
                     recentErrors = diagnostics.GetRecentErrors()
                 },
-                files = new
-                {
-                    count = fileInfos.Count(),
-                    totalSizeBytes = fileInfos.Sum(f => f.SizeBytes)
-                },
-                configuration = new
-                {
-                    outputDirectory = diagnostics.GetOutputDirectory()
-                }
-            });
-        })
-        .WithSummary("Get application information")
-        .WithDescription("Returns version, health status, file statistics, and configuration details")
-        .Produces<object>(200)
-        .AddOpenApiOperationTransformer((operation, context, ct) => Task.CompletedTask);
-
-        // Stats endpoint - telemetry and file statistics
-        apiGroup.MapGet("/stats", (
-            ITelemetryStatistics telemetryStats,
-            IDiagnosticsCollector diagnostics) =>
-        {
-            var processStartTime = Process.GetCurrentProcess().StartTime;
-            var uptimeSeconds = (long)(DateTime.Now - processStartTime).TotalSeconds;
-
-            // Get all files for breakdown
-            var allFiles = diagnostics.GetFileInfo(null);
-            var traceFiles = allFiles.Where(f => f.Path.Contains("traces.", StringComparison.OrdinalIgnoreCase)).ToList();
-            var logFiles = allFiles.Where(f => f.Path.Contains("logs.", StringComparison.OrdinalIgnoreCase)).ToList();
-            var metricFiles = allFiles.Where(f => f.Path.Contains("metrics.", StringComparison.OrdinalIgnoreCase)).ToList();
-
-            return Results.Json(new
-            {
                 telemetry = new
                 {
                     traces = new { requests = telemetryStats.TracesReceived },
@@ -440,42 +420,50 @@ public class WebApplicationHost : IWebApplicationHost
                 },
                 files = new
                 {
-                    traces = new
+                    count = fileInfos.Count(),
+                    totalSizeBytes = fileInfos.Sum(f => f.SizeBytes),
+                    breakdown = new
                     {
-                        count = traceFiles.Count,
-                        sizeBytes = traceFiles.Sum(f => f.SizeBytes)
-                    },
-                    logs = new
-                    {
-                        count = logFiles.Count,
-                        sizeBytes = logFiles.Sum(f => f.SizeBytes)
-                    },
-                    metrics = new
-                    {
-                        count = metricFiles.Count,
-                        sizeBytes = metricFiles.Sum(f => f.SizeBytes)
+                        traces = new
+                        {
+                            count = traceFiles.Count,
+                            sizeBytes = traceFiles.Sum(f => f.SizeBytes)
+                        },
+                        logs = new
+                        {
+                            count = logFiles.Count,
+                            sizeBytes = logFiles.Sum(f => f.SizeBytes)
+                        },
+                        metrics = new
+                        {
+                            count = metricFiles.Count,
+                            sizeBytes = metricFiles.Sum(f => f.SizeBytes)
+                        }
                     }
                 },
-                uptimeSeconds = uptimeSeconds
+                configuration = new
+                {
+                    outputDirectory = diagnostics.GetOutputDirectory()
+                }
             });
         })
-        .WithSummary("Get telemetry and file statistics")
-        .WithDescription("Returns telemetry request counts, file breakdown by type, and uptime")
+        .WithSummary("Get application status")
+        .WithDescription("Returns version, health status, telemetry statistics, file statistics, and configuration details")
         .Produces<object>(200)
         .AddOpenApiOperationTransformer((operation, context, ct) => Task.CompletedTask);
 
-        // Shutdown endpoint
-        apiGroup.MapPost("/shutdown", async (
+        // Stop endpoint
+        apiGroup.MapPost("/stop", async (
             IHostApplicationLifetime lifetime,
             HttpContext context,
             ILogger<WebApplicationHost> logger) =>
         {
-            logger.LogWarning("Shutdown requested via /api/shutdown endpoint");
+            logger.LogWarning("Stop requested via /api/stop endpoint");
 
             // Send response immediately
             await context.Response.WriteAsJsonAsync(new
             {
-                message = "Shutdown initiated",
+                message = "Stop initiated",
                 timestamp = DateTime.UtcNow
             });
             await context.Response.CompleteAsync();
@@ -489,7 +477,7 @@ public class WebApplicationHost : IWebApplicationHost
 
             return Results.Empty;
         })
-        .WithSummary("Initiate graceful shutdown")
+        .WithSummary("Stop the application")
         .WithDescription("Triggers application shutdown after responding with 200 OK")
         .Produces<object>(200)
         .AddOpenApiOperationTransformer((operation, context, ct) => Task.CompletedTask);

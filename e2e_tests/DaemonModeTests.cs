@@ -29,7 +29,7 @@ public class DaemonModeTests
     public async Task DaemonMode_VersionEndpoint_ReturnsVersionInfo()
     {
         // Act
-        var response = await _client.GetAsync("/api/info", TestContext.Current.CancellationToken);
+        var response = await _client.GetAsync("/api/status", TestContext.Current.CancellationToken);
 
         // Assert
         response.IsSuccessStatusCode.Should().BeTrue("daemon-started server should respond to version endpoint");
@@ -44,7 +44,7 @@ public class DaemonModeTests
     public async Task DaemonMode_DiagnoseEndpoint_ReturnsHealthStatus()
     {
         // Act
-        var response = await _client.GetAsync("/api/info", TestContext.Current.CancellationToken);
+        var response = await _client.GetAsync("/api/status", TestContext.Current.CancellationToken);
 
         // Assert
         response.IsSuccessStatusCode.Should().BeTrue("daemon-started server should respond to diagnose endpoint");
@@ -96,7 +96,7 @@ public class DaemonModeTests
     {
         // Act - make multiple concurrent requests
         var tasks = Enumerable.Range(0, 10)
-            .Select(_ => _client.GetAsync("/api/info", TestContext.Current.CancellationToken))
+            .Select(_ => _client.GetAsync("/api/status", TestContext.Current.CancellationToken))
             .ToArray();
 
         var responses = await Task.WhenAll(tasks);

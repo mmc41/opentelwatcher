@@ -49,7 +49,7 @@ public class OpenApiSchemaTests
 
         // Assert
         var paths = spec.RootElement.GetProperty("paths");
-        var managementEndpoints = new[] { "/api/info", "/api/shutdown" };
+        var managementEndpoints = new[] { "/api/status", "/api/stop" };
 
         foreach (var endpoint in managementEndpoints)
         {

@@ -48,7 +48,7 @@ public class SwaggerUiTests
     public async Task OpenApiSpec_ShouldContainAllEndpoints()
     {
         // Arrange
-        var expectedPaths = new[] { "/v1/traces", "/v1/logs", "/v1/metrics", "/healthz", "/api/info", "/api/shutdown" };
+        var expectedPaths = new[] { "/v1/traces", "/v1/logs", "/v1/metrics", "/healthz", "/api/status", "/api/stop" };
 
         // Act
         var response = await _fixture.Client.GetAsync("/openapi/v1.json", TestContext.Current.CancellationToken);

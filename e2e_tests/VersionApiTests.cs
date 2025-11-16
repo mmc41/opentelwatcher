@@ -21,12 +21,12 @@ public class VersionApiTests
     public async Task VersionEndpoint_ReturnsCorrectStructure()
     {
         // Act
-        var response = await _fixture.Client.GetAsync("/api/info", TestContext.Current.CancellationToken);
+        var response = await _fixture.Client.GetAsync("/api/status", TestContext.Current.CancellationToken);
 
         // Assert
         response.IsSuccessStatusCode.Should().BeTrue();
         var json = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
-        var info = JsonSerializer.Deserialize<InfoResponse>(json, new JsonSerializerOptions
+        var info = JsonSerializer.Deserialize<StatusResponse>(json, new JsonSerializerOptions
         {
             PropertyNameCaseInsensitive = true
         });
@@ -45,8 +45,8 @@ public class VersionApiTests
     public async Task VersionEndpoint_ReturnsOpenTelWatcherIdentifier()
     {
         // Act
-        var response = await _fixture.Client.GetAsync("/api/info", TestContext.Current.CancellationToken);
-        var info = await response.Content.ReadFromJsonAsync<InfoResponse>(cancellationToken: TestContext.Current.CancellationToken);
+        var response = await _fixture.Client.GetAsync("/api/status", TestContext.Current.CancellationToken);
+        var info = await response.Content.ReadFromJsonAsync<StatusResponse>(cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         info.Should().NotBeNull();
@@ -57,18 +57,18 @@ public class VersionApiTests
     public async Task VersionEndpoint_ReturnsConsistentVersion()
     {
         // Act - Call twice
-        var response1 = await _fixture.Client.GetAsync("/api/info", TestContext.Current.CancellationToken);
-        var info1 = await response1.Content.ReadFromJsonAsync<InfoResponse>(cancellationToken: TestContext.Current.CancellationToken);
+        var response1 = await _fixture.Client.GetAsync("/api/status", TestContext.Current.CancellationToken);
+        var info1 = await response1.Content.ReadFromJsonAsync<StatusResponse>(cancellationToken: TestContext.Current.CancellationToken);
 
-        var response2 = await _fixture.Client.GetAsync("/api/info", TestContext.Current.CancellationToken);
-        var info2 = await response2.Content.ReadFromJsonAsync<InfoResponse>(cancellationToken: TestContext.Current.CancellationToken);
+        var response2 = await _fixture.Client.GetAsync("/api/status", TestContext.Current.CancellationToken);
+        var info2 = await response2.Content.ReadFromJsonAsync<StatusResponse>(cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert - Should be identical
         info1.Should().BeEquivalentTo(info2);
     }
 }
 
-public record InfoResponse
+public record StatusResponse
 {
     public required string Application { get; init; }
     public required string Version { get; init; }

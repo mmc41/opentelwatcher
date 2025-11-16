@@ -578,7 +578,7 @@ public sealed class StartCommand
         {
             try
             {
-                var info = await apiClient.GetInfoAsync();
+                var info = await apiClient.GetStatusAsync();
                 if (info != null)
                 {
                     return true;

@@ -6,10 +6,10 @@ using UnitTests.Mocks;
 namespace UnitTests.CLI.Commands;
 
 /// <summary>
-/// Unit tests for ShutdownCommand.
-/// Tests shutdown logic without actual API calls.
+/// Unit tests for StopCommand.
+/// Tests stop logic without actual API calls.
 /// </summary>
-public class ShutdownCommandTests
+public class StopCommandTests
 {
     [Fact]
     public async Task ExecuteAsync_WhenNoInstanceRunning_ReturnsUserError()
@@ -19,7 +19,7 @@ public class ShutdownCommandTests
         {
             InstanceStatus = new InstanceStatus { IsRunning = false }
         };
-        var command = new ShutdownCommand(mockApiClient);
+        var command = new StopCommand(mockApiClient);
 
         // Act
         var result = await command.ExecuteAsync();
@@ -31,7 +31,7 @@ public class ShutdownCommandTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_WhenInstanceRunning_SendsShutdownRequest()
+    public async Task ExecuteAsync_WhenInstanceRunning_SendsStopRequest()
     {
         // Arrange
         var mockApiClient = new MockOpenTelWatcherApiClient
@@ -48,10 +48,10 @@ public class ShutdownCommandTests
                     ProcessId = 1234
                 }
             },
-            ShutdownSuccess = true,
-            WaitForShutdownResult = true
+            StopSuccess = true,
+            WaitForStopResult = true
         };
-        var command = new ShutdownCommand(mockApiClient);
+        var command = new StopCommand(mockApiClient);
 
         // Act
         var result = await command.ExecuteAsync();
@@ -62,7 +62,7 @@ public class ShutdownCommandTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_WhenShutdownRequestFails_ReturnsSystemError()
+    public async Task ExecuteAsync_WhenStopRequestFails_ReturnsSystemError()
     {
         // Arrange
         var mockApiClient = new MockOpenTelWatcherApiClient
@@ -79,9 +79,9 @@ public class ShutdownCommandTests
                     ProcessId = 1234
                 }
             },
-            ShutdownSuccess = false // Shutdown request fails
+            StopSuccess = false // Stop request fails
         };
-        var command = new ShutdownCommand(mockApiClient);
+        var command = new StopCommand(mockApiClient);
 
         // Act
         var result = await command.ExecuteAsync();
@@ -92,7 +92,7 @@ public class ShutdownCommandTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_WhenShutdownSucceeds_ReturnsSuccess()
+    public async Task ExecuteAsync_WhenStopSucceeds_ReturnsSuccess()
     {
         // Arrange
         var mockApiClient = new MockOpenTelWatcherApiClient
@@ -109,10 +109,10 @@ public class ShutdownCommandTests
                     ProcessId = 1234
                 }
             },
-            ShutdownSuccess = true,
-            WaitForShutdownResult = true
+            StopSuccess = true,
+            WaitForStopResult = true
         };
-        var command = new ShutdownCommand(mockApiClient);
+        var command = new StopCommand(mockApiClient);
 
         // Act
         var result = await command.ExecuteAsync();
@@ -123,7 +123,7 @@ public class ShutdownCommandTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_WithIncompatibleVersion_AttemptsShutdownAnyway()
+    public async Task ExecuteAsync_WithIncompatibleVersion_AttemptsStopAnyway()
     {
         // Arrange
         var mockApiClient = new MockOpenTelWatcherApiClient
@@ -141,10 +141,10 @@ public class ShutdownCommandTests
                     ProcessId = 1234
                 }
             },
-            ShutdownSuccess = true,
-            WaitForShutdownResult = true
+            StopSuccess = true,
+            WaitForStopResult = true
         };
-        var command = new ShutdownCommand(mockApiClient);
+        var command = new StopCommand(mockApiClient);
 
         // Act
         var result = await command.ExecuteAsync();
@@ -155,7 +155,7 @@ public class ShutdownCommandTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_WhenShutdownTimesOut_ReturnsSystemError()
+    public async Task ExecuteAsync_WhenStopTimesOut_ReturnsSystemError()
     {
         // Arrange
         var mockApiClient = new MockOpenTelWatcherApiClient
@@ -173,10 +173,10 @@ public class ShutdownCommandTests
                 },
                 Pid = null // No PID available
             },
-            ShutdownSuccess = true,
-            WaitForShutdownResult = false // Timeout
+            StopSuccess = true,
+            WaitForStopResult = false // Timeout
         };
-        var command = new ShutdownCommand(mockApiClient);
+        var command = new StopCommand(mockApiClient);
 
         // Act
         var result = await command.ExecuteAsync();
@@ -187,7 +187,7 @@ public class ShutdownCommandTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_ChecksInstanceStatus_BeforeShutdown()
+    public async Task ExecuteAsync_ChecksInstanceStatus_BeforeStop()
     {
         // Arrange
         var mockApiClient = new MockOpenTelWatcherApiClient
@@ -204,10 +204,10 @@ public class ShutdownCommandTests
                     ProcessId = 1234
                 }
             },
-            ShutdownSuccess = true,
-            WaitForShutdownResult = true
+            StopSuccess = true,
+            WaitForStopResult = true
         };
-        var command = new ShutdownCommand(mockApiClient);
+        var command = new StopCommand(mockApiClient);
 
         // Act
         await command.ExecuteAsync();
@@ -217,7 +217,7 @@ public class ShutdownCommandTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_WaitsForShutdown_AfterSendingRequest()
+    public async Task ExecuteAsync_WaitsForStop_AfterSendingRequest()
     {
         // Arrange
         var mockApiClient = new MockOpenTelWatcherApiClient
@@ -234,17 +234,17 @@ public class ShutdownCommandTests
                     ProcessId = 1234
                 }
             },
-            ShutdownSuccess = true,
-            WaitForShutdownResult = true
+            StopSuccess = true,
+            WaitForStopResult = true
         };
-        var command = new ShutdownCommand(mockApiClient);
+        var command = new StopCommand(mockApiClient);
 
         // Act
         var result = await command.ExecuteAsync();
 
         // Assert
         result.IsSuccess.Should().BeTrue();
-        // If shutdown succeeded, it means WaitForShutdownAsync was called and returned true
+        // If stop succeeded, it means WaitForStopAsync was called and returned true
     }
 
     // Note: Force kill tests require actual process management and are better suited for E2E tests.
@@ -268,10 +268,10 @@ public class ShutdownCommandTests
                     ProcessId = 1234
                 }
             },
-            ShutdownSuccess = true,
-            WaitForShutdownResult = true
+            StopSuccess = true,
+            WaitForStopResult = true
         };
-        var command = new ShutdownCommand(mockApiClient);
+        var command = new StopCommand(mockApiClient);
 
         // Act
         var result = await command.ExecuteAsync(silent: true);

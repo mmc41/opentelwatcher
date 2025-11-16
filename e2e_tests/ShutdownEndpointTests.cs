@@ -7,7 +7,7 @@ using OpenTelWatcher.Configuration;
 namespace OpenTelWatcher.Tests.E2E;
 
 /// <summary>
-/// Tests for the /api/shutdown endpoint.
+/// Tests for the /api/stop endpoint.
 /// Each test starts its own server instance to avoid interference with other tests.
 /// </summary>
 public class ShutdownEndpointTests : IDisposable
@@ -35,7 +35,7 @@ public class ShutdownEndpointTests : IDisposable
         await TestHelpers.WaitForServerHealthyAsync(port);
 
         using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
-        var shutdownUrl = $"http://{ApiConstants.Network.LocalhostIp}:{port}/api/shutdown";
+        var shutdownUrl = $"http://{ApiConstants.Network.LocalhostIp}:{port}/api/stop";
 
         // Act
         var response = await client.PostAsync(shutdownUrl, null, TestContext.Current.CancellationToken);
@@ -44,7 +44,7 @@ public class ShutdownEndpointTests : IDisposable
         response.StatusCode.Should().Be(HttpStatusCode.OK);
 
         var content = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
-        content.Should().Contain("Shutdown initiated");
+        content.Should().Contain("Stop initiated");
 
         // Verify server actually stopped
         await Task.Delay(3000, TestContext.Current.CancellationToken); // Give time for graceful shutdown
@@ -64,7 +64,7 @@ public class ShutdownEndpointTests : IDisposable
         await TestHelpers.WaitForServerHealthyAsync(port);
 
         using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
-        var shutdownUrl = $"http://{ApiConstants.Network.LocalhostIp}:{port}/api/shutdown";
+        var shutdownUrl = $"http://{ApiConstants.Network.LocalhostIp}:{port}/api/stop";
 
         // Act
         var stopwatch = Stopwatch.StartNew();
@@ -100,7 +100,7 @@ public class ShutdownEndpointTests : IDisposable
 
         using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
         var healthUrl = $"http://{ApiConstants.Network.LocalhostIp}:{port}/healthz";
-        var shutdownUrl = $"http://{ApiConstants.Network.LocalhostIp}:{port}/api/shutdown";
+        var shutdownUrl = $"http://{ApiConstants.Network.LocalhostIp}:{port}/api/stop";
 
         // Act - Start several concurrent requests, then shutdown
         var healthTasks = new List<Task<HttpResponseMessage>>();

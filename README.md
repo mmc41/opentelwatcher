@@ -4,7 +4,7 @@ A minimal, file-based OpenTelemetry collector for local development and testing.
 
 ## About
 
-> Most of the project code has been developed in a few days as a Claude code LLM-driven development experiement with human-in-the-loop as architect/test manager/reviwer but not as a developer. An early version of github speckit was used for the initial core functionally, which it did surprisingly well except for one major hiccup. For subsequent changes and quality improvments, plain claude was code was used under human direction, usually in plan mode. The process used a considerable amount of reviews and rework instructions when the AI decided on a bad approach like f.x. using goto statements or duplicated code.
+> Historical note (October 2025): Most of the project code has been developed in a few days as a Claude code LLM-driven development experiement with human-in-the-loop as architect/test manager/reviwer but not as a developer. An early version of github speckit was used for the initial core application, which it did surprisingly well except for one major hiccup and a too long main program file. For subsequent changes and quality improvements, speckit was to heavy to use so plain claude code was used under human direction, usually in plan mode. The process used a considerable amount of reviews and rework instructions when the AI decided on a bad approach like f.x. using goto statements or duplicating code. All in all, very little code and documentation was written by hand.
 
 ## Status
 

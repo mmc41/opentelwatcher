@@ -5,6 +5,7 @@
   <Target Name="CleanTestOutputDirectories" BeforeTargets="VSTest" Condition="'$(IsTestProject)' == 'true'">
     <PropertyGroup>
       <TestResultsPath>$(MSBuildThisFileDirectory)artifacts\test-results</TestResultsPath>
+      <LogsPath>$(MSBuildThisFileDirectory)artifacts\logs</LogsPath>
       <WatcherExePath>$(MSBuildThisFileDirectory)artifacts\bin\watcher\Debug\watcher.pid</WatcherExePath>
     </PropertyGroup>
 
@@ -28,6 +29,14 @@
     <MakeDir Directories="$(TestResultsPath)\unit" />
     <MakeDir Directories="$(TestResultsPath)\e2e" />
     <Message Text="Recreated test-results directory structure" Importance="High" />
+
+    <!-- Clean log files (preserve archives subdirectory) -->
+    <ItemGroup>
+      <LogFiles Include="$(LogsPath)\*.log" />
+      <LogFiles Include="$(LogsPath)\internal-nlog.txt" />
+    </ItemGroup>
+    <Delete Files="@(LogFiles)" ContinueOnError="true" />
+    <Message Text="Cleaned log files before running tests" Importance="High" Condition="Exists('$(LogsPath)')" />
 
     <!-- Delete watcher.pid if it exists -->
     <Delete Files="$(WatcherExePath)" Condition="Exists('$(WatcherExePath)')" />

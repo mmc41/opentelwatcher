@@ -3,8 +3,45 @@ using System.Text.Json.Serialization;
 namespace OpenTelWatcher.CLI.Models;
 
 /// <summary>
-/// Response from /api/info endpoint (combines version and diagnostics)
+/// Response from /api/status endpoint (combines version, diagnostics, and statistics)
 /// </summary>
+public sealed record StatusResponse
+{
+    [JsonPropertyName("application")]
+    public required string Application { get; init; }
+
+    [JsonPropertyName("version")]
+    public required string Version { get; init; }
+
+    [JsonPropertyName("versionComponents")]
+    public required VersionComponents VersionComponents { get; init; }
+
+    [JsonPropertyName("processId")]
+    public required int ProcessId { get; init; }
+
+    [JsonPropertyName("port")]
+    public required int Port { get; init; }
+
+    [JsonPropertyName("uptimeSeconds")]
+    public required long UptimeSeconds { get; init; }
+
+    [JsonPropertyName("health")]
+    public required DiagnoseHealth Health { get; init; }
+
+    [JsonPropertyName("telemetry")]
+    public required TelemetryStatistics Telemetry { get; init; }
+
+    [JsonPropertyName("files")]
+    public required StatusFileStatistics Files { get; init; }
+
+    [JsonPropertyName("configuration")]
+    public required DiagnoseConfiguration Configuration { get; init; }
+}
+
+/// <summary>
+/// Response from /api/info endpoint (deprecated - use /api/status instead)
+/// </summary>
+[Obsolete("Use StatusResponse instead. This endpoint has been renamed to /api/status")]
 public sealed record InfoResponse
 {
     [JsonPropertyName("application")]
@@ -66,8 +103,21 @@ public sealed record VersionComponents
 }
 
 /// <summary>
-/// Response from /api/shutdown endpoint (already exists)
+/// Response from /api/stop endpoint
 /// </summary>
+public sealed record StopResponse
+{
+    [JsonPropertyName("message")]
+    public required string Message { get; init; }
+
+    [JsonPropertyName("timestamp")]
+    public required DateTime Timestamp { get; init; }
+}
+
+/// <summary>
+/// Response from /api/shutdown endpoint (deprecated - use /api/stop instead)
+/// </summary>
+[Obsolete("Use StopResponse instead. This endpoint has been renamed to /api/stop")]
 public sealed record ShutdownResponse
 {
     [JsonPropertyName("message")]
@@ -132,6 +182,21 @@ public sealed record FileStatistics
 
     [JsonPropertyName("totalSizeBytes")]
     public required long TotalSizeBytes { get; init; }
+}
+
+/// <summary>
+/// File statistics with breakdown by telemetry type (for /api/status endpoint)
+/// </summary>
+public sealed record StatusFileStatistics
+{
+    [JsonPropertyName("count")]
+    public required int Count { get; init; }
+
+    [JsonPropertyName("totalSizeBytes")]
+    public required long TotalSizeBytes { get; init; }
+
+    [JsonPropertyName("breakdown")]
+    public required FileBreakdown Breakdown { get; init; }
 }
 
 /// <summary>

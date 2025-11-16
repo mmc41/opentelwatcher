@@ -7,13 +7,13 @@ using OpenTelWatcher.CLI.Services;
 namespace OpenTelWatcher.CLI.Commands;
 
 /// <summary>
-/// Shutdown command - stops running watcher instance
+/// Stop command - stops running watcher instance
 /// </summary>
-public sealed class ShutdownCommand
+public sealed class StopCommand
 {
     private readonly IOpenTelWatcherApiClient _apiClient;
 
-    public ShutdownCommand(IOpenTelWatcherApiClient apiClient)
+    public StopCommand(IOpenTelWatcherApiClient apiClient)
     {
         _apiClient = apiClient;
     }
@@ -30,19 +30,19 @@ public sealed class ShutdownCommand
             return BuildNoInstanceRunningResult(result, silent, jsonOutput);
         }
 
-        // Step 2: Get instance info and display pre-shutdown message
-        var info = await _apiClient.GetInfoAsync();
+        // Step 2: Get instance status and display pre-shutdown message
+        var info = await _apiClient.GetStatusAsync();
         AddInstanceInfoToResult(result, status, info, silent, jsonOutput);
 
-        // Step 3: Send shutdown request
-        var shutdownSent = await _apiClient.ShutdownAsync();
+        // Step 3: Send stop request
+        var shutdownSent = await _apiClient.StopAsync();
         if (!shutdownSent)
         {
             return BuildShutdownRequestFailedResult(result, silent, jsonOutput);
         }
 
-        // Step 4: Wait for graceful shutdown
-        var stopped = await _apiClient.WaitForShutdownAsync(ApiConstants.Timeouts.ShutdownWaitSeconds);
+        // Step 4: Wait for graceful stop
+        var stopped = await _apiClient.WaitForStopAsync(ApiConstants.Timeouts.ShutdownWaitSeconds);
         if (stopped)
         {
             return BuildGracefulShutdownResult(result, silent, jsonOutput);
@@ -78,7 +78,7 @@ public sealed class ShutdownCommand
         return CommandResult.Success("Service stopped");
     }
 
-    private void AddInstanceInfoToResult(Dictionary<string, object> result, InstanceStatus status, InfoResponse? info, bool silent, bool jsonOutput)
+    private void AddInstanceInfoToResult(Dictionary<string, object> result, InstanceStatus status, StatusResponse? info, bool silent, bool jsonOutput)
     {
         if (info is null)
         {

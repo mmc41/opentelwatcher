@@ -120,8 +120,18 @@ dotnet run --project opentelwatcher
 
 When running tests watch out for console warning messages and attempt fixes. In particular,
 the warning "Ungraceful shutdown(s) detected" is likely due to a bug in E2E process cleanup
-and the warning "opentelopentelwatcher.pid file still exists" indicated a bug related to cleanup of pid not 
-done OR a bug in E2E process cleanup.
+and the warning "opentelopentelwatcher.pid file still exists" indicated a bug related to cleanup of pid not
+done OR a bug in E2E process cleanup. Always investigate such warnings and look for shutdown bugs.
+
+**Log File Inspection After Test Runs:**
+
+Always inspect `artifacts/logs/opentelwatcher-all-{date}.log` after running tests in the following cases:
+
+1. **Test run takes unexpectedly long time** - Check logs for bugs such as hanging threads, deadlocks, or infinite loops
+2. **After test suite completes** - Check for potential errors not detected by xUnit tests (e.g., unhandled exceptions in background threads, resource leaks, warnings)
+3. **When xUnit test fails** - Use logs for debugging and locating the root cause of failures by examining the complete execution flow
+
+The `-all-` log file contains complete diagnostic history including Microsoft framework logs, making it the most comprehensive source for troubleshooting test issues.
 
 ### CLI Interface (005-cli-interface)
 
@@ -138,8 +148,29 @@ dotnet run --project opentelwatcher -- start --daemon --port 4318
 # Stop the running instance
 dotnet run --project opentelwatcher -- stop
 
-# View diagnostic information
-dotnet run --project opentelwatcher -- info
+# View instance status (health, version, config, stats)
+dotnet run --project opentelwatcher -- status
+
+# View only error information
+dotnet run --project opentelwatcher -- status --errors-only
+
+# View only statistics (telemetry stats and file counts)
+dotnet run --project opentelwatcher -- status --stats-only
+
+# Suppress output, only exit code (for scripting)
+dotnet run --project opentelwatcher -- status --quiet
+
+# JSON output (all modes support this)
+dotnet run --project opentelwatcher -- status --json
+
+# Standalone mode: check for errors without running instance
+dotnet run --project opentelwatcher -- status --output-dir ./telemetry-data --quiet
+
+# List telemetry files
+dotnet run --project opentelwatcher -- list
+
+# List only error files
+dotnet run --project opentelwatcher -- list --errors-only
 
 # Clear telemetry data files
 dotnet run --project opentelwatcher -- clear
@@ -151,20 +182,40 @@ dotnet run --project opentelwatcher -- clear --output-dir ./telemetry-data --ver
 dotnet run --project opentelwatcher -- --help
 ```
 
-**CLI Commands:**
+**CLI Commands (5 core + 1 alias):**
 - `opentelwatcher` (no args) - Display help and available commands
 - `opentelwatcher start` - Start the watcher service with optional configuration
   - `--port <number>` - Port number (default: 4318)
   - `--output-dir, -o <path>` - Output directory (default: ./telemetry-data)
   - `--log-level <level>` - Log level (default: Information)
   - `--daemon` - Run in background (non-blocking mode)
-- `opentelwatcher stop` / `opentelwatcher shutdown` - Stop the running instance
-- `opentelwatcher info` - View application information (version, health, files, config)
+- `opentelwatcher stop` - Stop the running instance
+- `opentelwatcher status` - Unified status/info/check command (dual-mode: API + filesystem)
+  - `--errors-only` - Show only error information
+  - `--stats-only` - Show only telemetry statistics
+  - `--verbose` - Show detailed diagnostic information
+  - `--quiet` - Suppress output, only exit code (for scripting)
+  - `--json` - Output in JSON format
+  - `--output-dir, -o <path>` - Standalone filesystem mode (scan directory for errors)
+  - Exit codes: 0 (healthy/no errors), 1 (unhealthy/errors detected), 2 (system error)
+- `opentelwatcher stats` - Alias for `status --stats-only` (backward compatibility)
+- `opentelwatcher list` - List telemetry files
+  - `--signal <type>` - Filter by signal type (traces, logs, metrics)
+  - `--errors-only` - List only error files
+  - `--json` - Output in JSON format
 - `opentelwatcher clear` - Clear telemetry data files
   - `--output-dir, -o <path>` - Directory to clear (validated against instance when running)
   - `--verbose` - Show detailed operation information
   - `--silent` - Suppress all output except errors
+  - `--json` - Output in JSON format
 - `opentelwatcher --help` / `opentelwatcher -h` - Show help message
+
+**CLI-to-API Mapping (1-1):**
+- `start` → (no API - bootstraps server)
+- `stop` → POST `/api/stop`
+- `status` → GET `/api/status` (or filesystem scan in standalone mode)
+- `list` → GET `/api/list`
+- `clear` → POST `/api/clear`
 
 **CLI Architecture (System.CommandLine 2.0):**
 - Declarative command/option definitions via `RootCommand` and `Command`
@@ -172,13 +223,33 @@ dotnet run --project opentelwatcher -- --help
 - Built-in validators for type checking and range validation
 - Automatic alias support (e.g., `-o` for `--output-dir`)
 - Version compatibility checking (major version must match)
-- HTTP client communication with running instance via `/api/info`, `/api/shutdown`, `/api/clear`
+- HTTP client communication with running instance via `/api/status`, `/api/stop`, `/api/list`, `/api/clear`
 - Exit codes: 0 (success), 1 (user error), 2 (system error)
 - Command pattern with dependency injection
 
+**Status Command Dual-Mode Behavior:**
+- **Instance Running (API Mode)**:
+  - Calls `GET /api/status` to retrieve full information
+  - Returns: health, version, uptime, config, file stats, telemetry stats, errors
+  - Exit code: 0 (healthy), 1 (errors detected), 2 (system error)
+- **Standalone (Filesystem Mode)**:
+  - No running instance required
+  - Scans `--output-dir` for `*.errors.ndjson` files
+  - Returns: error file count, error file list
+  - Limited information (no API data available)
+  - Exit code: 0 (no errors), 1 (errors detected)
+- **Mode Selection**:
+  - Automatically attempts API connection first
+  - Falls back to filesystem mode if instance not running
+  - User can force filesystem mode with `--output-dir` parameter
+- **Use Cases**:
+  - CI/CD: Check for errors after tests (instance stopped): `watcher status --output-dir ./telemetry-data --quiet`
+  - Development: Get full status while running: `watcher status`
+  - Scripting: Health check with exit code: `watcher status --quiet && echo "healthy"`
+
 **Clear Command Dual-Mode Behavior:**
 - **Instance Running Mode**:
-  - Queries `/api/info` to get instance's output directory
+  - Queries `/api/status` to get instance's output directory
   - Validates `--output-dir` option against instance directory (if provided)
   - Calls `/api/clear` endpoint to delete files
   - Displays before/after stats, files deleted, and space freed

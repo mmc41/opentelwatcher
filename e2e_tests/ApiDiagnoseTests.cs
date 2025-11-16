@@ -23,7 +23,7 @@ public class ApiDiagnoseTests
     public async Task ApiDiagnose_ShouldReturnExpectedResponseFormat()
     {
         // Act
-        var response = await _fixture.Client.GetAsync("/api/info", TestContext.Current.CancellationToken);
+        var response = await _fixture.Client.GetAsync("/api/status", TestContext.Current.CancellationToken);
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -38,7 +38,7 @@ public class ApiDiagnoseTests
     public async Task ApiDiagnose_WithSignalFilter_ShouldFilterResults()
     {
         // Act
-        var response = await _fixture.Client.GetAsync("/api/info?signal=traces", TestContext.Current.CancellationToken);
+        var response = await _fixture.Client.GetAsync("/api/status?signal=traces", TestContext.Current.CancellationToken);
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -55,7 +55,7 @@ public class ApiDiagnoseTests
     public async Task ApiVersion_ShouldReturnVersionInfo()
     {
         // Act
-        var response = await _fixture.Client.GetAsync("/api/info", TestContext.Current.CancellationToken);
+        var response = await _fixture.Client.GetAsync("/api/status", TestContext.Current.CancellationToken);
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK);

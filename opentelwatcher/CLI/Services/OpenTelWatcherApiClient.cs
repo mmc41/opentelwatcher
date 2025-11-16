@@ -24,15 +24,15 @@ public sealed class OpenTelWatcherApiClient : IOpenTelWatcherApiClient
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
-    public async Task<InfoResponse?> GetInfoAsync()
+    public async Task<StatusResponse?> GetStatusAsync()
     {
         try
         {
-            var response = await _httpClient.GetAsync("/api/info");
+            var response = await _httpClient.GetAsync("/api/status");
             if (!response.IsSuccessStatusCode)
                 return null;
 
-            return await response.Content.ReadFromJsonAsync<InfoResponse>(JsonOptions);
+            return await response.Content.ReadFromJsonAsync<StatusResponse>(JsonOptions);
         }
         catch (HttpRequestException ex)
         {
@@ -50,9 +50,8 @@ public sealed class OpenTelWatcherApiClient : IOpenTelWatcherApiClient
 
     public async Task<InstanceStatus> GetInstanceStatusAsync(Version cliVersion)
     {
-        var info = await GetInfoAsync();
-
-        if (info is null)
+        var status = await GetStatusAsync();
+        if (status is null)
         {
             return new InstanceStatus
             {
@@ -68,28 +67,28 @@ public sealed class OpenTelWatcherApiClient : IOpenTelWatcherApiClient
         // Create VersionResponse for compatibility with InstanceStatus
         var versionResponse = new VersionResponse
         {
-            Application = info.Application,
-            Version = info.Version,
-            VersionComponents = info.VersionComponents,
-            ProcessId = info.ProcessId
+            Application = status.Application,
+            Version = status.Version,
+            VersionComponents = status.VersionComponents,
+            ProcessId = status.ProcessId
         };
 
         // Verify application identifier
-        if (info.Application != "OpenTelWatcher")
+        if (status.Application != "OpenTelWatcher")
         {
             return new InstanceStatus
             {
                 IsRunning = true,
                 Version = versionResponse,
-                Pid = info.ProcessId,
+                Pid = status.ProcessId,
                 IsCompatible = false,
-                IncompatibilityReason = $"Expected 'OpenTelWatcher' but found '{info.Application}'",
+                IncompatibilityReason = $"Expected 'OpenTelWatcher' but found '{status.Application}'",
                 DetectionError = null
             };
         }
 
         // Check major version compatibility
-        var instanceMajor = info.VersionComponents.Major;
+        var instanceMajor = status.VersionComponents.Major;
         var cliMajor = cliVersion.Major;
 
         if (instanceMajor != cliMajor)
@@ -98,7 +97,7 @@ public sealed class OpenTelWatcherApiClient : IOpenTelWatcherApiClient
             {
                 IsRunning = true,
                 Version = versionResponse,
-                Pid = info.ProcessId,
+                Pid = status.ProcessId,
                 IsCompatible = false,
                 IncompatibilityReason = $"Version mismatch: CLI major version {cliMajor} does not match instance major version {instanceMajor}",
                 DetectionError = null
@@ -110,40 +109,71 @@ public sealed class OpenTelWatcherApiClient : IOpenTelWatcherApiClient
         {
             IsRunning = true,
             Version = versionResponse,
-            Pid = info.ProcessId,
+            Pid = status.ProcessId,
             IsCompatible = true,
             IncompatibilityReason = null,
             DetectionError = null
         };
     }
 
-    public async Task<bool> ShutdownAsync()
+    [Obsolete("Use GetStatusAsync instead")]
+    public async Task<InfoResponse?> GetInfoAsync()
+    {
+        var status = await GetStatusAsync();
+        if (status is null)
+            return null;
+
+        // Map StatusResponse back to InfoResponse for backward compatibility
+        return new InfoResponse
+        {
+            Application = status.Application,
+            Version = status.Version,
+            VersionComponents = status.VersionComponents,
+            ProcessId = status.ProcessId,
+            Port = status.Port,
+            Health = status.Health,
+            Files = new FileStatistics
+            {
+                Count = status.Files.Count,
+                TotalSizeBytes = status.Files.TotalSizeBytes
+            },
+            Configuration = status.Configuration
+        };
+    }
+
+    public async Task<bool> StopAsync()
     {
         try
         {
-            var response = await _httpClient.PostAsync("/api/shutdown", null);
+            var response = await _httpClient.PostAsync("/api/stop", null);
             return response.IsSuccessStatusCode;
         }
         catch (HttpRequestException ex)
         {
-            _logger.LogDebug(ex, "HTTP request failed when calling /api/shutdown");
+            _logger.LogDebug(ex, "HTTP request failed when calling /api/stop");
             return false;
         }
         catch (TaskCanceledException ex)
         {
-            _logger.LogDebug(ex, "Request timed out when calling /api/shutdown");
+            _logger.LogDebug(ex, "Request timed out when calling /api/stop");
             return false;
         }
     }
 
-    public async Task<bool> WaitForShutdownAsync(int timeoutSeconds = ApiConstants.Timeouts.ShutdownWaitSeconds)
+    [Obsolete("Use StopAsync instead")]
+    public async Task<bool> ShutdownAsync()
+    {
+        return await StopAsync();
+    }
+
+    public async Task<bool> WaitForStopAsync(int timeoutSeconds = ApiConstants.Timeouts.ShutdownWaitSeconds)
     {
         var endTime = DateTime.UtcNow.AddSeconds(timeoutSeconds);
 
         while (DateTime.UtcNow < endTime)
         {
-            var info = await GetInfoAsync();
-            if (info is null)
+            var status = await GetStatusAsync();
+            if (status is null)
             {
                 // Service stopped
                 return true;
@@ -153,6 +183,12 @@ public sealed class OpenTelWatcherApiClient : IOpenTelWatcherApiClient
         }
 
         return false; // Timeout
+    }
+
+    [Obsolete("Use WaitForStopAsync instead")]
+    public async Task<bool> WaitForShutdownAsync(int timeoutSeconds = ApiConstants.Timeouts.ShutdownWaitSeconds)
+    {
+        return await WaitForStopAsync(timeoutSeconds);
     }
 
     public async Task<ClearResponse?> ClearAsync()
@@ -179,27 +215,19 @@ public sealed class OpenTelWatcherApiClient : IOpenTelWatcherApiClient
         }
     }
 
+    [Obsolete("Use GetStatusAsync instead. Statistics are now included in the status response.")]
     public async Task<StatsResponse?> GetStatsAsync()
     {
-        try
-        {
-            var response = await _httpClient.GetAsync("/api/stats");
-            if (!response.IsSuccessStatusCode)
-                return null;
+        var status = await GetStatusAsync();
+        if (status is null)
+            return null;
 
-            return await response.Content.ReadFromJsonAsync<StatsResponse>(JsonOptions);
-        }
-        catch (HttpRequestException ex)
+        // Map StatusResponse to StatsResponse for backward compatibility
+        return new StatsResponse
         {
-            // Connection refused - service not running
-            _logger.LogDebug(ex, "HTTP request failed (service likely not running)");
-            return null;
-        }
-        catch (TaskCanceledException ex)
-        {
-            // Timeout - service not running or not responding
-            _logger.LogDebug(ex, "Request timed out (service not responding)");
-            return null;
-        }
+            Telemetry = status.Telemetry,
+            Files = status.Files.Breakdown,
+            UptimeSeconds = status.UptimeSeconds
+        };
     }
 }

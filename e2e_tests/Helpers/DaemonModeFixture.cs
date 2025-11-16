@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Microsoft.Extensions.Logging;
+using OpenTelWatcher.Configuration;
 
 namespace OpenTelWatcher.Tests.E2E;
 
@@ -19,7 +20,7 @@ namespace OpenTelWatcher.Tests.E2E;
 /// 1. Constructor - synchronous initialization
 /// 2. InitializeAsync - starts daemon subprocess and waits for health check
 /// 3. [All tests in collection execute]
-/// 4. DisposeAsync - graceful shutdown via /api/shutdown
+/// 4. DisposeAsync - graceful shutdown via /api/stop
 /// 5. Dispose - force kill via PID file if still running
 /// </summary>
 public class DaemonModeFixture : OpenTelWatcherServerFixtureBase
@@ -72,29 +73,49 @@ public class DaemonModeFixture : OpenTelWatcherServerFixtureBase
             throw new InvalidOperationException($"Daemon parent process failed with exit code {parentProcess.ExitCode}");
         }
 
-        // Read the PID from the opentelwatcher.pid file
-        // Use same logic as PidFileService to determine PID file location
-        var pidFilePath = GetPidFilePath(solutionRoot);
+        // Get the daemon PID by querying the /api/status endpoint on our specific port
+        // This is more reliable than reading the PID file because:
+        // 1. Each test fixture uses a unique port
+        // 2. Only our daemon will be listening on that port
+        // 3. The API returns the exact process ID
+        // We wait for the daemon to be ready (already done in base class WaitForWatcherReadyAsync)
+        // but we do it here explicitly to get the PID
 
-        // Wait a bit for the PID file to be created
-        for (int i = 0; i < 10; i++)
+        int daemonPid = 0;
+        var maxAttempts = 30;
+        var delay = TimeSpan.FromSeconds(1);
+
+        using var httpClient = new HttpClient { BaseAddress = new Uri($"http://{ApiConstants.Network.LocalhostIp}:{_port}") };
+
+        for (var attempt = 0; attempt < maxAttempts; attempt++)
         {
-            if (File.Exists(pidFilePath))
+            try
             {
-                break;
+                var response = await httpClient.GetAsync("/api/status");
+                if (response.IsSuccessStatusCode)
+                {
+                    var json = await response.Content.ReadAsStringAsync();
+                    var statusDoc = System.Text.Json.JsonDocument.Parse(json);
+
+                    if (statusDoc.RootElement.TryGetProperty("processId", out var pidElement))
+                    {
+                        daemonPid = pidElement.GetInt32();
+                        _logger.LogInformation("Retrieved daemon PID {0} from /api/status endpoint", daemonPid);
+                        break;
+                    }
+                }
             }
-            await Task.Delay(100);
+            catch (HttpRequestException)
+            {
+                // Expected while daemon is starting up
+            }
+
+            await Task.Delay(delay);
         }
 
-        if (!File.Exists(pidFilePath))
+        if (daemonPid == 0)
         {
-            throw new InvalidOperationException("Daemon PID file was not created");
-        }
-
-        var pidContent = await File.ReadAllTextAsync(pidFilePath);
-        if (!int.TryParse(pidContent.Trim(), out var daemonPid))
-        {
-            throw new InvalidOperationException($"Invalid PID in opentelwatcher.pid file: {pidContent}");
+            throw new InvalidOperationException("Failed to retrieve daemon PID from /api/status endpoint");
         }
 
         _daemonPid = daemonPid;
@@ -147,27 +168,4 @@ public class DaemonModeFixture : OpenTelWatcherServerFixtureBase
         }
     }
 
-    /// <summary>
-    /// Gets the PID file path using the same logic as PidFileService.
-    /// This mirrors the logic in watcher/Services/PidFileService.cs:GetPidFileDirectory()
-    /// </summary>
-    private static string GetPidFilePath(string solutionRoot)
-    {
-        // For development/testing: Use executable directory if running from artifacts
-        var executableDir = Path.Combine(solutionRoot, "artifacts", "bin", "opentelwatcher", "Debug");
-        if (Directory.Exists(executableDir))
-        {
-            return Path.Combine(executableDir, "opentelwatcher.pid");
-        }
-
-        // For production deployments: Use platform-appropriate temp directory
-        var xdgRuntimeDir = Environment.GetEnvironmentVariable("XDG_RUNTIME_DIR");
-        if (!string.IsNullOrEmpty(xdgRuntimeDir) && Directory.Exists(xdgRuntimeDir))
-        {
-            return Path.Combine(xdgRuntimeDir, "opentelwatcher.pid");
-        }
-
-        // Fallback to OS temp directory
-        return Path.Combine(Path.GetTempPath(), "opentelwatcher.pid");
-    }
 }

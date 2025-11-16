@@ -248,7 +248,7 @@ public static class TestHelpers
         try
         {
             using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
-            await client.PostAsync($"http://{ApiConstants.Network.LocalhostIp}:{port}/api/shutdown", null);
+            await client.PostAsync($"http://{ApiConstants.Network.LocalhostIp}:{port}/api/stop", null);
 
             // Wait for graceful shutdown
             if (process != null && !process.HasExited)
@@ -275,7 +275,7 @@ public static class TestHelpers
         try
         {
             using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
-            await client.PostAsync($"http://{ApiConstants.Network.LocalhostIp}:{port}/api/shutdown", null);
+            await client.PostAsync($"http://{ApiConstants.Network.LocalhostIp}:{port}/api/stop", null);
             await Task.Delay(2000); // Wait for shutdown
         }
         catch

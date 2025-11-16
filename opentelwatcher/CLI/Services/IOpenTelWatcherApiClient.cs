@@ -8,9 +8,16 @@ namespace OpenTelWatcher.CLI.Services;
 public interface IOpenTelWatcherApiClient
 {
     /// <summary>
-    /// Get application information from running instance (version + diagnostics)
+    /// Get application status from running instance (version, diagnostics, and statistics)
+    /// </summary>
+    /// <returns>Status response or null if not running</returns>
+    Task<StatusResponse?> GetStatusAsync();
+
+    /// <summary>
+    /// Get application information from running instance (deprecated - use GetStatusAsync)
     /// </summary>
     /// <returns>Info response or null if not running</returns>
+    [Obsolete("Use GetStatusAsync instead")]
     Task<InfoResponse?> GetInfoAsync();
 
     /// <summary>
@@ -21,9 +28,16 @@ public interface IOpenTelWatcherApiClient
     Task<InstanceStatus> GetInstanceStatusAsync(Version cliVersion);
 
     /// <summary>
-    /// Send shutdown command to running instance
+    /// Send stop command to running instance
+    /// </summary>
+    /// <returns>True if stop initiated successfully</returns>
+    Task<bool> StopAsync();
+
+    /// <summary>
+    /// Send shutdown command to running instance (deprecated - use StopAsync)
     /// </summary>
     /// <returns>True if shutdown initiated successfully</returns>
+    [Obsolete("Use StopAsync instead")]
     Task<bool> ShutdownAsync();
 
     /// <summary>
@@ -31,6 +45,14 @@ public interface IOpenTelWatcherApiClient
     /// </summary>
     /// <param name="timeoutSeconds">Maximum wait time in seconds</param>
     /// <returns>True if stopped, false if timeout</returns>
+    Task<bool> WaitForStopAsync(int timeoutSeconds = 30);
+
+    /// <summary>
+    /// Wait for instance to stop (deprecated - use WaitForStopAsync)
+    /// </summary>
+    /// <param name="timeoutSeconds">Maximum wait time in seconds</param>
+    /// <returns>True if stopped, false if timeout</returns>
+    [Obsolete("Use WaitForStopAsync instead")]
     Task<bool> WaitForShutdownAsync(int timeoutSeconds = 30);
 
     /// <summary>
@@ -40,8 +62,9 @@ public interface IOpenTelWatcherApiClient
     Task<ClearResponse?> ClearAsync();
 
     /// <summary>
-    /// Get telemetry and file statistics from running instance
+    /// Get telemetry and file statistics from running instance (deprecated - use GetStatusAsync)
     /// </summary>
     /// <returns>Stats response or null if not running</returns>
+    [Obsolete("Use GetStatusAsync instead. Statistics are now included in the status response.")]
     Task<StatsResponse?> GetStatsAsync();
 }

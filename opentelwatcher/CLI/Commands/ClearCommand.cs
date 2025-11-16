@@ -40,8 +40,8 @@ public sealed class ClearCommand
     {
         var result = new Dictionary<string, object>();
 
-        // Step 1: Get instance info
-        var infoBefore = await _apiClient.GetInfoAsync();
+        // Step 1: Get instance status
+        var infoBefore = await _apiClient.GetStatusAsync();
         if (infoBefore is null)
         {
             return BuildFailedToRetrieveInfoResult(result, silent, jsonOutput);

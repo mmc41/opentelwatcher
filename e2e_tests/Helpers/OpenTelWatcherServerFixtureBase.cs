@@ -72,7 +72,7 @@ public abstract class OpenTelWatcherServerFixtureBase : IAsyncLifetime, IDisposa
             try
             {
                 // Try graceful shutdown first
-                await _client!.PostAsync("/api/shutdown", null).WaitAsync(TimeSpan.FromSeconds(5));
+                await _client!.PostAsync("/api/stop", null).WaitAsync(TimeSpan.FromSeconds(5));
             }
             catch (Exception ex)
             {
@@ -228,7 +228,7 @@ public abstract class OpenTelWatcherServerFixtureBase : IAsyncLifetime, IDisposa
     }
 
     /// <summary>
-    /// Waits for the watcher to be ready by polling the /api/info endpoint.
+    /// Waits for the watcher to be ready by polling the /api/status endpoint.
     /// </summary>
     private async Task WaitForWatcherReadyAsync()
     {
@@ -239,7 +239,7 @@ public abstract class OpenTelWatcherServerFixtureBase : IAsyncLifetime, IDisposa
         {
             try
             {
-                var response = await _client!.GetAsync("/api/info", TestContext.Current.CancellationToken);
+                var response = await _client!.GetAsync("/api/status", TestContext.Current.CancellationToken);
                 if (response.IsSuccessStatusCode)
                 {
                     _logger.LogInformation("Watcher ready after {0} attempts", attempt + 1);

@@ -35,7 +35,7 @@ public sealed class CliApplication
             "  opentelwatcher start --daemon                     Start in background (non-blocking)\n" +
             "  opentelwatcher stop                               Stop the running instance\n" +
             "  opentelwatcher status                             Quick health status summary\n" +
-            "  opentelwatcher stats                              Show telemetry and file statistics\n" +
+            "  opentelwatcher status --verbose                   Detailed telemetry and file statistics\n" +
             "  opentelwatcher info                               View application information\n" +
             "  opentelwatcher list                               List telemetry data files\n" +
             "  opentelwatcher check                              Check for error files\n" +
@@ -52,9 +52,7 @@ public sealed class CliApplication
         rootCommand.Subcommands.Add(BuildStopCommand());
         rootCommand.Subcommands.Add(BuildStatusCommand());
         rootCommand.Subcommands.Add(BuildStatsCommand());
-        rootCommand.Subcommands.Add(BuildInfoCommand());
         rootCommand.Subcommands.Add(BuildListCommand());
-        rootCommand.Subcommands.Add(BuildCheckCommand());
         rootCommand.Subcommands.Add(BuildClearCommand());
 
         return rootCommand;
@@ -240,7 +238,7 @@ public sealed class CliApplication
             var silent = parseResult.GetValue(silentOption);
             var json = parseResult.GetValue(jsonOption);
             var services = BuildServiceProvider(4318);
-            var command = services.GetRequiredService<ShutdownCommand>();
+            var command = services.GetRequiredService<StopCommand>();
             var result = command.ExecuteAsync(silent, json).GetAwaiter().GetResult();
 
             // Command handles its own console output
@@ -258,9 +256,27 @@ public sealed class CliApplication
             DefaultValueFactory = _ => 4318
         };
 
-        var silentOption = new Option<bool>("--silent")
+        var errorsOnlyOption = new Option<bool>("--errors-only")
         {
-            Description = "Suppress all console output except errors",
+            Description = "Show only error-related information",
+            DefaultValueFactory = _ => false
+        };
+
+        var statsOnlyOption = new Option<bool>("--stats-only")
+        {
+            Description = "Show only telemetry and file statistics",
+            DefaultValueFactory = _ => false
+        };
+
+        var verboseOption = new Option<bool>("--verbose")
+        {
+            Description = "Show detailed diagnostic information",
+            DefaultValueFactory = _ => false
+        };
+
+        var quietOption = new Option<bool>("--quiet")
+        {
+            Description = "Suppress all output, only exit code",
             DefaultValueFactory = _ => false
         };
 
@@ -270,28 +286,65 @@ public sealed class CliApplication
             DefaultValueFactory = _ => false
         };
 
-        var statusCommand = new Command("status", "Quick health status summary\n\n" +
-            "Provides a one-line summary of the watcher's health status.\n" +
-            "Returns exit code 0 for healthy, 1 for unhealthy (errors detected),\n" +
-            "and 2 if no instance is running.\n\n" +
+        var outputDirOption = new Option<string?>("--output-dir")
+        {
+            Description = "Force filesystem mode: scan directory for errors (no running instance required)",
+            DefaultValueFactory = _ => null
+        };
+
+        var statusCommand = new Command("status", "Unified status command with multiple modes\n\n" +
+            "Supports dual-mode operation:\n" +
+            "- API mode: Query running instance for full diagnostics\n" +
+            "- Filesystem mode: Scan directory for error files (standalone, no instance required)\n\n" +
+            "Modes:\n" +
+            "  Default:        Full diagnostic information (version, health, config, files, stats)\n" +
+            "  --errors-only:  Show only error-related information\n" +
+            "  --stats-only:   Show only telemetry and file statistics\n" +
+            "  --verbose:      Show detailed diagnostic information\n" +
+            "  --quiet:        Suppress output, only exit code\n" +
+            "  --output-dir:   Force filesystem mode (scan directory for errors)\n\n" +
+            "Exit codes:\n" +
+            "  0: Healthy (no errors detected)\n" +
+            "  1: Unhealthy (errors detected)\n" +
+            "  2: System error (failed to retrieve information)\n\n" +
             "Options:\n" +
             "  --port <number>          Port number to query (default: 4318)\n" +
-            "  --silent                 Suppress all output except errors\n" +
-            "  --json                   Output results in JSON format")
+            "  --errors-only            Show only error-related information\n" +
+            "  --stats-only             Show only telemetry and file statistics\n" +
+            "  --verbose                Show detailed diagnostic information\n" +
+            "  --quiet                  Suppress all output except errors\n" +
+            "  --json                   Output results in JSON format\n" +
+            "  --output-dir <path>      Scan directory for errors (filesystem mode)")
         {
             portOption,
-            silentOption,
-            jsonOption
+            errorsOnlyOption,
+            statsOnlyOption,
+            verboseOption,
+            quietOption,
+            jsonOption,
+            outputDirOption
         };
 
         statusCommand.SetAction(parseResult =>
         {
             var port = parseResult.GetValue(portOption);
-            var silent = parseResult.GetValue(silentOption);
+            var errorsOnly = parseResult.GetValue(errorsOnlyOption);
+            var statsOnly = parseResult.GetValue(statsOnlyOption);
+            var verbose = parseResult.GetValue(verboseOption);
+            var quiet = parseResult.GetValue(quietOption);
             var json = parseResult.GetValue(jsonOption);
+            var outputDir = parseResult.GetValue(outputDirOption);
+
             var services = BuildServiceProvider(port);
             var command = services.GetRequiredService<StatusCommand>();
-            var result = command.ExecuteAsync(silent, json).GetAwaiter().GetResult();
+            var result = command.ExecuteAsync(
+                errorsOnly: errorsOnly,
+                statsOnly: statsOnly,
+                verbose: verbose,
+                quiet: quiet,
+                jsonOutput: json,
+                outputDir: outputDir
+            ).GetAwaiter().GetResult();
 
             // Command handles its own console output
             return result.ExitCode;
@@ -320,8 +373,8 @@ public sealed class CliApplication
             DefaultValueFactory = _ => false
         };
 
-        var statsCommand = new Command("stats", "Show telemetry and file statistics\n\n" +
-            "Displays telemetry request counts (traces, logs, metrics),\n" +
+        var statsCommand = new Command("stats", "Show telemetry and file statistics (alias for status --verbose)\n\n" +
+            "Displays detailed telemetry request counts (traces, logs, metrics),\n" +
             "file breakdown by type, and uptime.\n\n" +
             "Options:\n" +
             "  --port <number>          Port number to query (default: 4318)\n" +
@@ -338,9 +391,11 @@ public sealed class CliApplication
             var port = parseResult.GetValue(portOption);
             var silent = parseResult.GetValue(silentOption);
             var json = parseResult.GetValue(jsonOption);
+
             var services = BuildServiceProvider(port);
-            var command = services.GetRequiredService<StatsCommand>();
-            var result = command.ExecuteAsync(silent, json).GetAwaiter().GetResult();
+            var command = services.GetRequiredService<StatusCommand>();
+            // Always enable stats-only mode for stats command
+            var result = command.ExecuteAsync(statsOnly: true, quiet: silent, jsonOutput: json).GetAwaiter().GetResult();
 
             // Command handles its own console output
             return result.ExitCode;
@@ -349,142 +404,6 @@ public sealed class CliApplication
         return statsCommand;
     }
 
-    private Command BuildInfoCommand()
-    {
-        var silentOption = new Option<bool>("--silent")
-        {
-            Description = "Suppress all console output except errors",
-            DefaultValueFactory = _ => false
-        };
-
-        var verboseOption = new Option<bool>("--verbose")
-        {
-            Description = "Enable verbose output with detailed error information",
-            DefaultValueFactory = _ => false
-        };
-
-        var jsonOption = new Option<bool>("--json")
-        {
-            Description = "Output results in JSON format",
-            DefaultValueFactory = _ => false
-        };
-
-        var infoCommand = new Command("info", "View application information from the running instance\n\n" +
-            "Displays version, health status, telemetry statistics, and configuration.\n" +
-            "Requires a running instance to connect to.\n\n" +
-            "Options:\n" +
-            "  --silent                 Suppress all output except errors (overrides --verbose)\n" +
-            "  --verbose                Show detailed error information\n" +
-            "  --json                   Output results in JSON format")
-        {
-            silentOption,
-            verboseOption,
-            jsonOption
-        };
-
-        infoCommand.SetAction(parseResult =>
-        {
-            var silent = parseResult.GetValue(silentOption);
-            var verbose = parseResult.GetValue(verboseOption);
-            var json = parseResult.GetValue(jsonOption);
-            var services = BuildServiceProvider(4318);
-            var command = services.GetRequiredService<InfoCommand>();
-            var result = command.ExecuteAsync(verbose, silent, json).GetAwaiter().GetResult();
-
-            // Command handles its own console output
-            return result.ExitCode;
-        });
-
-        return infoCommand;
-    }
-
-    private Command BuildCheckCommand()
-    {
-        // Get default output directory from configuration
-        var defaultOutputDir = GetDefaultOutputDirectory();
-
-        var outputDirOption = new Option<string>("--output-dir")
-        {
-            Description = "Directory to check for error files",
-            DefaultValueFactory = _ => defaultOutputDir
-        };
-        outputDirOption.Aliases.Add("-o");
-
-        var verboseOption = new Option<bool>("--verbose")
-        {
-            Description = "Show detailed error file list",
-            DefaultValueFactory = _ => false
-        };
-
-        var jsonOption = new Option<bool>("--json")
-        {
-            Description = "Output results in JSON format",
-            DefaultValueFactory = _ => false
-        };
-
-        var checkCommand = new Command("check", "Check for error files in telemetry output directory\n\n" +
-            "Scans the output directory for .errors.ndjson files.\n" +
-            "Returns exit code 0 if no errors found, 1 if errors detected.\n" +
-            "Works in standalone mode (no running instance required).\n\n" +
-            "Options:\n" +
-            "  --output-dir, -o <path>  Directory to check (default from appsettings.json)\n" +
-            "  --verbose                Show detailed error file list\n" +
-            "  --json                   Output results in JSON format")
-        {
-            outputDirOption,
-            verboseOption,
-            jsonOption
-        };
-
-        checkCommand.SetAction(parseResult =>
-        {
-            var outputDir = parseResult.GetValue(outputDirOption);
-            var verbose = parseResult.GetValue(verboseOption);
-            var json = parseResult.GetValue(jsonOption);
-
-            var options = new CheckOptions
-            {
-                OutputDir = outputDir ?? defaultOutputDir,
-                Verbose = verbose,
-                JsonOutput = json
-            };
-
-            var command = new CheckCommand();
-            var result = command.ExecuteAsync(options).GetAwaiter().GetResult();
-
-            // Handle output based on JSON flag
-            if (json)
-            {
-                // JSON output
-                var jsonData = System.Text.Json.JsonSerializer.Serialize(result.Data, new System.Text.Json.JsonSerializerOptions
-                {
-                    WriteIndented = true
-                });
-                Console.WriteLine(jsonData);
-            }
-            else
-            {
-                // Human-readable output
-                Console.WriteLine(result.Message);
-                if (verbose && result.Data != null && result.Data.ContainsKey("errorFiles"))
-                {
-                    var errorFiles = result.Data["errorFiles"] as List<string>;
-                    if (errorFiles != null && errorFiles.Count > 0)
-                    {
-                        Console.WriteLine("\nError files:");
-                        foreach (var file in errorFiles)
-                        {
-                            Console.WriteLine($"  - {file}");
-                        }
-                    }
-                }
-            }
-
-            return result.ExitCode;
-        });
-
-        return checkCommand;
-    }
 
     private Command BuildClearCommand()
     {
@@ -638,10 +557,8 @@ public sealed class CliApplication
 
         // Command handlers
         services.AddTransient<StartCommand>();
-        services.AddTransient<ShutdownCommand>();
+        services.AddTransient<StopCommand>();
         services.AddTransient<StatusCommand>();
-        services.AddTransient<StatsCommand>();
-        services.AddTransient<InfoCommand>();
         services.AddTransient<ClearCommand>();
 
         return services.BuildServiceProvider();

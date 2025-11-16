@@ -187,7 +187,7 @@ public class IndexModel : PageModel
                 LogsEndpoint = $"{baseUrl}/v1/logs",
                 MetricsEndpoint = $"{baseUrl}/v1/metrics",
                 HealthEndpoint = $"{baseUrl}/healthz",
-                DiagnoseEndpoint = $"{baseUrl}/api/diagnose",
+                DiagnoseEndpoint = $"{baseUrl}/api/status",
                 SwaggerUiEndpoint = $"{baseUrl}/swagger",
                 OpenApiSpecEndpoint = $"{baseUrl}/openapi/v1.json",
                 ClearEndpoint = $"{baseUrl}/api/clear"

@@ -13,24 +13,37 @@ public class OpenTelWatcherApiClientTests
     [Fact]
     public async Task GetInfoAsync_WhenServiceRunning_ReturnsInfo()
     {
-        // Arrange
-        var expectedInfo = new InfoResponse
+        // Arrange - Mock must return StatusResponse because GetInfoAsync calls GetStatusAsync internally
+        var statusResponse = new StatusResponse
         {
             Application = "OpenTelWatcher",
             Version = "1.0.0",
             VersionComponents = new VersionComponents { Major = 1, Minor = 0, Patch = 0 },
             ProcessId = 12345,
             Port = 4318,
+            UptimeSeconds = 3600,
             Health = new DiagnoseHealth
             {
                 Status = "healthy",
                 ConsecutiveErrors = 0,
                 RecentErrors = new List<string>()
             },
-            Files = new FileStatistics
+            Telemetry = new TelemetryStatistics
+            {
+                Traces = new TelemetryTypeStats { Requests = 0 },
+                Logs = new TelemetryTypeStats { Requests = 0 },
+                Metrics = new TelemetryTypeStats { Requests = 0 }
+            },
+            Files = new StatusFileStatistics
             {
                 Count = 5,
-                TotalSizeBytes = 1024
+                TotalSizeBytes = 1024,
+                Breakdown = new FileBreakdown
+                {
+                    Traces = new FileTypeStats { Count = 0, SizeBytes = 0 },
+                    Logs = new FileTypeStats { Count = 0, SizeBytes = 0 },
+                    Metrics = new FileTypeStats { Count = 0, SizeBytes = 0 }
+                }
             },
             Configuration = new DiagnoseConfiguration
             {
@@ -40,11 +53,11 @@ public class OpenTelWatcherApiClientTests
 
         var handler = new MockHttpMessageHandler(req =>
         {
-            if (req.RequestUri?.PathAndQuery == "/api/info")
+            if (req.RequestUri?.PathAndQuery == "/api/status")
             {
                 return new HttpResponseMessage(HttpStatusCode.OK)
                 {
-                    Content = JsonContent.Create(expectedInfo)
+                    Content = JsonContent.Create(statusResponse)
                 };
             }
             return new HttpResponseMessage(HttpStatusCode.NotFound);
@@ -107,15 +120,32 @@ public class OpenTelWatcherApiClientTests
     public async Task GetInstanceStatusAsync_WhenVersionMatches_ReturnsCompatible()
     {
         // Arrange
-        var infoResponse = new InfoResponse
+        var statusResponse = new StatusResponse
         {
             Application = "OpenTelWatcher",
             Version = "1.5.0",
             VersionComponents = new VersionComponents { Major = 1, Minor = 5, Patch = 0 },
             ProcessId = 12345,
             Port = 4318,
+            UptimeSeconds = 3600,
             Health = new DiagnoseHealth { Status = "healthy", ConsecutiveErrors = 0, RecentErrors = new List<string>() },
-            Files = new FileStatistics { Count = 0, TotalSizeBytes = 0 },
+            Telemetry = new TelemetryStatistics
+            {
+                Traces = new TelemetryTypeStats { Requests = 0 },
+                Logs = new TelemetryTypeStats { Requests = 0 },
+                Metrics = new TelemetryTypeStats { Requests = 0 }
+            },
+            Files = new StatusFileStatistics
+            {
+                Count = 0,
+                TotalSizeBytes = 0,
+                Breakdown = new FileBreakdown
+                {
+                    Traces = new FileTypeStats { Count = 0, SizeBytes = 0 },
+                    Logs = new FileTypeStats { Count = 0, SizeBytes = 0 },
+                    Metrics = new FileTypeStats { Count = 0, SizeBytes = 0 }
+                }
+            },
             Configuration = new DiagnoseConfiguration { OutputDirectory = "./telemetry-data" }
         };
 
@@ -123,7 +153,7 @@ public class OpenTelWatcherApiClientTests
         {
             return new HttpResponseMessage(HttpStatusCode.OK)
             {
-                Content = JsonContent.Create(infoResponse)
+                Content = JsonContent.Create(statusResponse)
             };
         });
 
@@ -144,15 +174,32 @@ public class OpenTelWatcherApiClientTests
     public async Task GetInstanceStatusAsync_WhenMajorVersionDiffers_ReturnsIncompatible()
     {
         // Arrange
-        var infoResponse = new InfoResponse
+        var statusResponse = new StatusResponse
         {
             Application = "OpenTelWatcher",
             Version = "2.0.0",
             VersionComponents = new VersionComponents { Major = 2, Minor = 0, Patch = 0 },
             ProcessId = 12345,
             Port = 4318,
+            UptimeSeconds = 3600,
             Health = new DiagnoseHealth { Status = "healthy", ConsecutiveErrors = 0, RecentErrors = new List<string>() },
-            Files = new FileStatistics { Count = 0, TotalSizeBytes = 0 },
+            Telemetry = new TelemetryStatistics
+            {
+                Traces = new TelemetryTypeStats { Requests = 0 },
+                Logs = new TelemetryTypeStats { Requests = 0 },
+                Metrics = new TelemetryTypeStats { Requests = 0 }
+            },
+            Files = new StatusFileStatistics
+            {
+                Count = 0,
+                TotalSizeBytes = 0,
+                Breakdown = new FileBreakdown
+                {
+                    Traces = new FileTypeStats { Count = 0, SizeBytes = 0 },
+                    Logs = new FileTypeStats { Count = 0, SizeBytes = 0 },
+                    Metrics = new FileTypeStats { Count = 0, SizeBytes = 0 }
+                }
+            },
             Configuration = new DiagnoseConfiguration { OutputDirectory = "./telemetry-data" }
         };
 
@@ -160,7 +207,7 @@ public class OpenTelWatcherApiClientTests
         {
             return new HttpResponseMessage(HttpStatusCode.OK)
             {
-                Content = JsonContent.Create(infoResponse)
+                Content = JsonContent.Create(statusResponse)
             };
         });
 
@@ -180,15 +227,32 @@ public class OpenTelWatcherApiClientTests
     public async Task GetInstanceStatusAsync_WhenApplicationNameWrong_ReturnsIncompatible()
     {
         // Arrange
-        var infoResponse = new InfoResponse
+        var statusResponse = new StatusResponse
         {
             Application = "SomeOtherApp",
             Version = "1.0.0",
             VersionComponents = new VersionComponents { Major = 1, Minor = 0, Patch = 0 },
             ProcessId = 12345,
             Port = 4318,
+            UptimeSeconds = 3600,
             Health = new DiagnoseHealth { Status = "healthy", ConsecutiveErrors = 0, RecentErrors = new List<string>() },
-            Files = new FileStatistics { Count = 0, TotalSizeBytes = 0 },
+            Telemetry = new TelemetryStatistics
+            {
+                Traces = new TelemetryTypeStats { Requests = 0 },
+                Logs = new TelemetryTypeStats { Requests = 0 },
+                Metrics = new TelemetryTypeStats { Requests = 0 }
+            },
+            Files = new StatusFileStatistics
+            {
+                Count = 0,
+                TotalSizeBytes = 0,
+                Breakdown = new FileBreakdown
+                {
+                    Traces = new FileTypeStats { Count = 0, SizeBytes = 0 },
+                    Logs = new FileTypeStats { Count = 0, SizeBytes = 0 },
+                    Metrics = new FileTypeStats { Count = 0, SizeBytes = 0 }
+                }
+            },
             Configuration = new DiagnoseConfiguration { OutputDirectory = "./telemetry-data" }
         };
 
@@ -196,7 +260,7 @@ public class OpenTelWatcherApiClientTests
         {
             return new HttpResponseMessage(HttpStatusCode.OK)
             {
-                Content = JsonContent.Create(infoResponse)
+                Content = JsonContent.Create(statusResponse)
             };
         });
 
@@ -218,11 +282,11 @@ public class OpenTelWatcherApiClientTests
         // Arrange
         var handler = new MockHttpMessageHandler(req =>
         {
-            if (req.Method == HttpMethod.Post && req.RequestUri?.PathAndQuery == "/api/shutdown")
+            if (req.Method == HttpMethod.Post && req.RequestUri?.PathAndQuery == "/api/stop")
             {
                 return new HttpResponseMessage(HttpStatusCode.OK)
                 {
-                    Content = JsonContent.Create(new { message = "Shutdown initiated", timestamp = DateTime.UtcNow })
+                    Content = JsonContent.Create(new { message = "Stop initiated", timestamp = DateTime.UtcNow })
                 };
             }
             return new HttpResponseMessage(HttpStatusCode.NotFound);

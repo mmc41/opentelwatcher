@@ -110,7 +110,7 @@ public class OpenTelWatcherE2ETests
         await Task.Delay(100, TestContext.Current.CancellationToken);
 
         // Get output directory from diagnostics
-        var diagResponse = await _client.GetAsync("/api/info?signal=traces", TestContext.Current.CancellationToken);
+        var diagResponse = await _client.GetAsync("/api/status?signal=traces", TestContext.Current.CancellationToken);
         var diagContent = await diagResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         var diagJson = JsonDocument.Parse(diagContent);
         var outputDir = diagJson.RootElement.GetProperty("configuration").GetProperty("outputDirectory").GetString();
@@ -179,7 +179,7 @@ public class OpenTelWatcherE2ETests
         await Task.Delay(100, TestContext.Current.CancellationToken);
 
         // Get output directory from diagnostics
-        var diagResponse = await _client.GetAsync("/api/info?signal=logs", TestContext.Current.CancellationToken);
+        var diagResponse = await _client.GetAsync("/api/status?signal=logs", TestContext.Current.CancellationToken);
         var diagContent = await diagResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         var diagJson = JsonDocument.Parse(diagContent);
         var outputDir = diagJson.RootElement.GetProperty("configuration").GetProperty("outputDirectory").GetString();
@@ -267,7 +267,7 @@ public class OpenTelWatcherE2ETests
         await Task.Delay(100, TestContext.Current.CancellationToken);
 
         // Get output directory from diagnostics
-        var diagResponse = await _client.GetAsync("/api/info?signal=metrics", TestContext.Current.CancellationToken);
+        var diagResponse = await _client.GetAsync("/api/status?signal=metrics", TestContext.Current.CancellationToken);
         var diagContent = await diagResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         var diagJson = JsonDocument.Parse(diagContent);
         var outputDir = diagJson.RootElement.GetProperty("configuration").GetProperty("outputDirectory").GetString();
@@ -343,7 +343,7 @@ public class OpenTelWatcherE2ETests
         await Task.Delay(100, TestContext.Current.CancellationToken);
 
         // Get output directory from diagnostics
-        var diagResponse = await _client.GetAsync("/api/info?signal=traces", TestContext.Current.CancellationToken);
+        var diagResponse = await _client.GetAsync("/api/status?signal=traces", TestContext.Current.CancellationToken);
         var diagContent = await diagResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         var diagJson = JsonDocument.Parse(diagContent);
         var outputDir = diagJson.RootElement.GetProperty("configuration").GetProperty("outputDirectory").GetString();
@@ -408,7 +408,7 @@ public class OpenTelWatcherE2ETests
         await Task.Delay(100, TestContext.Current.CancellationToken);
 
         // Get output directory from diagnostics
-        var diagResponse = await _client.GetAsync("/api/info?signal=logs", TestContext.Current.CancellationToken);
+        var diagResponse = await _client.GetAsync("/api/status?signal=logs", TestContext.Current.CancellationToken);
         var diagContent = await diagResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         var diagJson = JsonDocument.Parse(diagContent);
         var outputDir = diagJson.RootElement.GetProperty("configuration").GetProperty("outputDirectory").GetString();
@@ -493,7 +493,7 @@ public class OpenTelWatcherE2ETests
         await Task.Delay(100, TestContext.Current.CancellationToken);
 
         // Get output directory from diagnostics
-        var diagResponse = await _client.GetAsync("/api/info?signal=metrics", TestContext.Current.CancellationToken);
+        var diagResponse = await _client.GetAsync("/api/status?signal=metrics", TestContext.Current.CancellationToken);
         var diagContent = await diagResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         var diagJson = JsonDocument.Parse(diagContent);
         var outputDir = diagJson.RootElement.GetProperty("configuration").GetProperty("outputDirectory").GetString();

@@ -64,7 +64,7 @@ public class ClearApiTests
     public async Task ClearEndpoint_DeletesFilesAfterIngestion()
     {
         // Arrange - Get info to check current file count
-        var infoBefore = await _fixture.Client.GetFromJsonAsync<InfoResponse>("/api/info",
+        var infoBefore = await _fixture.Client.GetFromJsonAsync<StatusResponse>("/api/status",
             TestContext.Current.CancellationToken);
 
         // Send some telemetry data if no files exist
@@ -94,7 +94,7 @@ public class ClearApiTests
         result.FilesDeleted.Should().BeGreaterThanOrEqualTo(0);
 
         // Verify files are actually deleted
-        var infoAfter = await _fixture.Client.GetFromJsonAsync<InfoResponse>("/api/info",
+        var infoAfter = await _fixture.Client.GetFromJsonAsync<StatusResponse>("/api/status",
             TestContext.Current.CancellationToken);
 
         infoAfter!.Files.Count.Should().Be(0, "all files should be deleted after clear");
