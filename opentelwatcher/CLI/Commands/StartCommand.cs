@@ -6,6 +6,7 @@ using OpenTelWatcher.Configuration;
 using OpenTelWatcher.CLI.Models;
 using OpenTelWatcher.CLI.Services;
 using OpenTelWatcher.Hosting;
+using OpenTelWatcher.Services.Interfaces;
 
 namespace OpenTelWatcher.CLI.Commands;
 
@@ -18,11 +19,13 @@ public sealed class StartCommand
     private readonly ILogger<StartCommand> _logger;
     private readonly IOpenTelWatcherApiClient _apiClient;
     private readonly IWebApplicationHost _webHost;
+    private readonly IPidFileService _pidFileService;
 
-    public StartCommand(IOpenTelWatcherApiClient apiClient, IWebApplicationHost webHost, ILogger<StartCommand> logger)
+    public StartCommand(IOpenTelWatcherApiClient apiClient, IWebApplicationHost webHost, IPidFileService pidFileService, ILogger<StartCommand> logger)
     {
         _apiClient = apiClient;
         _webHost = webHost;
+        _pidFileService = pidFileService;
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -37,7 +40,7 @@ public sealed class StartCommand
 
         var cliVersion = Assembly.GetExecutingAssembly().GetName().Version ?? new Version(1, 0, 0);
 
-        // Step 1: Check if instance already running
+        // Step 1: Check if instance already running via API
         var status = await _apiClient.GetInstanceStatusAsync(cliVersion);
         if (status.IsRunning && status.IsCompatible)
         {
@@ -48,6 +51,16 @@ public sealed class StartCommand
         {
             return BuildIncompatibleInstanceResult(result, status.IncompatibilityReason!, options.Silent, jsonOutput);
         }
+
+        // Step 1b: Check PID file for instances on the same port and clean stale entries
+        var existingEntry = _pidFileService.GetEntryByPort(options.Port);
+        if (existingEntry != null && existingEntry.IsRunning())
+        {
+            return BuildPortInUseByPidFileResult(result, options.Port, existingEntry, options.Silent, jsonOutput);
+        }
+
+        // Clean stale entries while we're at it
+        _pidFileService.CleanStaleEntries();
 
         // Step 2: Validate configuration
         var serverOptions = new ServerOptions
@@ -98,6 +111,26 @@ public sealed class StartCommand
         result["message"] = "Use 'opentelwatcher stop' to stop the running instance first.";
         OutputResult(result, jsonOutput, silent, isError: true, errorType: "Instance already running");
         return CommandResult.UserError("Instance already running");
+    }
+
+    private CommandResult BuildPortInUseByPidFileResult(Dictionary<string, object> result, int port, PidEntry entry, bool silent, bool jsonOutput)
+    {
+        var uptime = DateTime.UtcNow - entry.Timestamp;
+        var uptimeStr = uptime.TotalHours >= 1
+            ? $"{uptime.TotalHours:F1} hours ago"
+            : uptime.TotalMinutes >= 1
+                ? $"{uptime.TotalMinutes:F0} minutes ago"
+                : "just now";
+
+        result["success"] = false;
+        result["error"] = "Port already in use";
+        result["pid"] = entry.Pid;
+        result["startTime"] = entry.Timestamp;
+        result["uptime"] = uptimeStr;
+        result["message"] = $"Instance already running on port {port} (PID: {entry.Pid}, started: {uptimeStr})";
+
+        OutputResult(result, jsonOutput, silent, isError: true, errorType: "Port in use");
+        return CommandResult.UserError("Port already in use");
     }
 
     private CommandResult BuildIncompatibleInstanceResult(Dictionary<string, object> result, string reason, bool silent, bool jsonOutput)
@@ -186,6 +219,11 @@ public sealed class StartCommand
             case "Instance already running":
                 Console.WriteLine($"Instance already running on port {result["port"]}");
                 Console.WriteLine((string)result["message"]);
+                break;
+
+            case "Port in use":
+                Console.WriteLine((string)result["message"]);
+                Console.WriteLine("Use 'opentelwatcher stop' to stop the running instance first.");
                 break;
 
             case "Incompatible instance":

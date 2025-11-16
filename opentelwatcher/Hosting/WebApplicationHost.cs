@@ -157,7 +157,7 @@ public class WebApplicationHost : IWebApplicationHost
     {
         // Register PID file and setup cleanup handlers
         var pidFileService = app.Services.GetRequiredService<IPidFileService>();
-        pidFileService.Register();
+        pidFileService.Register(options.Port);
         SetupCleanupHandlers(app, pidFileService);
 
         // Configure static files

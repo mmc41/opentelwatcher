@@ -6,6 +6,8 @@ using OpenTelWatcher.CLI.Commands;
 using OpenTelWatcher.CLI.Models;
 using OpenTelWatcher.CLI.Services;
 using OpenTelWatcher.Hosting;
+using OpenTelWatcher.Services;
+using OpenTelWatcher.Services.Interfaces;
 using CliLogLevel = OpenTelWatcher.CLI.Models.LogLevel;
 
 namespace OpenTelWatcher.CLI;
@@ -554,6 +556,9 @@ public sealed class CliApplication
 
         // Web application host (production implementation)
         services.AddSingleton<IWebApplicationHost, WebApplicationHost>();
+
+        // PID file service
+        services.AddSingleton<IPidFileService, PidFileService>();
 
         // Command handlers
         services.AddTransient<StartCommand>();

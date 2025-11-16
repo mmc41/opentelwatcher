@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
 using OpenTelWatcher.Services.Interfaces;
 
@@ -10,6 +12,7 @@ namespace OpenTelWatcher.Services;
 /// On Linux/macOS: Uses XDG_RUNTIME_DIR or temp directory.
 /// On Windows: Uses temp directory.
 /// For development builds: Uses executable directory (artifacts/bin/watcher/Debug).
+/// File format: JSON Lines (NDJSON) with PID, port, and timestamp.
 /// </summary>
 public sealed class PidFileService : IPidFileService
 {
@@ -17,6 +20,11 @@ public sealed class PidFileService : IPidFileService
     private readonly object _fileLock = new();
     private bool _isUnregistered = false;
     private readonly ILogger<PidFileService> _logger;
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+    };
 
     public string PidFilePath { get; }
 
@@ -57,17 +65,27 @@ public sealed class PidFileService : IPidFileService
     }
 
     /// <summary>
-    /// Register the current process ID by appending it to the opentelwatcher.pid file
+    /// Register the current process with PID, port, and timestamp
     /// </summary>
-    public void Register()
+    public void Register(int port)
     {
         lock (_fileLock)
         {
             try
             {
-                // Append the current PID to the file (create if not exists)
-                File.AppendAllLines(PidFilePath, new[] { _currentPid.ToString() });
-                _logger.LogInformation("Registered process {ProcessId} in PID file: {PidFilePath}", _currentPid, PidFilePath);
+                var entry = new PidEntry
+                {
+                    Pid = _currentPid,
+                    Port = port,
+                    Timestamp = DateTime.UtcNow
+                };
+
+                var json = JsonSerializer.Serialize(entry, JsonOptions);
+                File.AppendAllLines(PidFilePath, new[] { json });
+
+                _logger.LogInformation(
+                    "Registered process {ProcessId} on port {Port} in PID file: {PidFilePath}",
+                    _currentPid, port, PidFilePath);
             }
             catch (Exception ex)
             {
@@ -78,7 +96,7 @@ public sealed class PidFileService : IPidFileService
     }
 
     /// <summary>
-    /// Unregister the current process ID by removing it from the opentelwatcher.pid file.
+    /// Unregister the current process from the PID file.
     /// Safe to call multiple times - will only perform cleanup once.
     /// </summary>
     public void Unregister()
@@ -99,19 +117,16 @@ public sealed class PidFileService : IPidFileService
                     return; // Nothing to unregister
                 }
 
-                // Read all PIDs
-                var lines = File.ReadAllLines(PidFilePath);
-
-                // Filter out the current PID
-                var remainingPids = lines
-                    .Where(line => !string.IsNullOrWhiteSpace(line))
-                    .Where(line => int.TryParse(line.Trim(), out var pid) && pid != _currentPid)
+                var entries = GetRegisteredEntries();
+                var remainingEntries = entries
+                    .Where(e => e.Pid != _currentPid)
                     .ToList();
 
-                // Rewrite the file with remaining PIDs (or delete if empty)
-                if (remainingPids.Count > 0)
+                // Rewrite the file with remaining entries (or delete if empty)
+                if (remainingEntries.Count > 0)
                 {
-                    File.WriteAllLines(PidFilePath, remainingPids);
+                    var lines = remainingEntries.Select(e => JsonSerializer.Serialize(e, JsonOptions));
+                    File.WriteAllLines(PidFilePath, lines);
                 }
                 else
                 {
@@ -119,6 +134,7 @@ public sealed class PidFileService : IPidFileService
                 }
 
                 _isUnregistered = true;
+                _logger.LogInformation("Unregistered process {ProcessId} from PID file", _currentPid);
             }
             catch (Exception ex)
             {
@@ -131,9 +147,9 @@ public sealed class PidFileService : IPidFileService
     }
 
     /// <summary>
-    /// Get all registered process IDs from the opentelwatcher.pid file
+    /// Get all registered PID entries
     /// </summary>
-    public IReadOnlyList<int> GetRegisteredPids()
+    public IReadOnlyList<PidEntry> GetRegisteredEntries()
     {
         lock (_fileLock)
         {
@@ -141,27 +157,125 @@ public sealed class PidFileService : IPidFileService
             {
                 if (!File.Exists(PidFilePath))
                 {
-                    return Array.Empty<int>();
+                    return Array.Empty<PidEntry>();
                 }
 
                 var lines = File.ReadAllLines(PidFilePath);
-                var pids = new List<int>();
+                var entries = new List<PidEntry>();
 
                 foreach (var line in lines)
                 {
-                    if (!string.IsNullOrWhiteSpace(line) && int.TryParse(line.Trim(), out var pid))
+                    if (string.IsNullOrWhiteSpace(line)) continue;
+
+                    try
                     {
-                        pids.Add(pid);
+                        var entry = JsonSerializer.Deserialize<PidEntry>(line, JsonOptions);
+                        if (entry != null) entries.Add(entry);
+                    }
+                    catch (JsonException)
+                    {
+                        // Try parsing as legacy format (plain integer)
+                        if (int.TryParse(line.Trim(), out var pid))
+                        {
+                            // Create legacy entry with unknown port and timestamp
+                            entries.Add(new PidEntry
+                            {
+                                Pid = pid,
+                                Port = 0, // Unknown
+                                Timestamp = DateTime.MinValue // Unknown
+                            });
+                        }
+                        else
+                        {
+                            _logger.LogWarning("Failed to parse PID entry: {Line}", line);
+                        }
                     }
                 }
 
-                return pids;
+                return entries;
             }
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Failed to read PIDs from {PidFilePath}", PidFilePath);
-                return Array.Empty<int>();
+                return Array.Empty<PidEntry>();
             }
         }
+    }
+
+    /// <summary>
+    /// Get all registered PID entries for a specific port
+    /// </summary>
+    public IReadOnlyList<PidEntry> GetRegisteredEntriesForPort(int port)
+    {
+        return GetRegisteredEntries()
+            .Where(e => e.Port == port)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Find the entry for a specific PID
+    /// </summary>
+    public PidEntry? GetEntryByPid(int pid)
+    {
+        return GetRegisteredEntries().FirstOrDefault(e => e.Pid == pid);
+    }
+
+    /// <summary>
+    /// Find the entry for a specific port (returns first match if multiple)
+    /// </summary>
+    public PidEntry? GetEntryByPort(int port)
+    {
+        return GetRegisteredEntries().FirstOrDefault(e => e.Port == port);
+    }
+
+    /// <summary>
+    /// Remove stale entries (process no longer running)
+    /// </summary>
+    public int CleanStaleEntries()
+    {
+        lock (_fileLock)
+        {
+            try
+            {
+                if (!File.Exists(PidFilePath)) return 0;
+
+                var entries = GetRegisteredEntries();
+                var runningEntries = entries.Where(e => e.IsRunning()).ToList();
+                var removedCount = entries.Count - runningEntries.Count;
+
+                if (removedCount > 0)
+                {
+                    if (runningEntries.Count > 0)
+                    {
+                        var lines = runningEntries.Select(e => JsonSerializer.Serialize(e, JsonOptions));
+                        File.WriteAllLines(PidFilePath, lines);
+                    }
+                    else
+                    {
+                        File.Delete(PidFilePath);
+                    }
+
+                    _logger.LogInformation(
+                        "Cleaned {Count} stale PID entries from {PidFilePath}",
+                        removedCount, PidFilePath);
+                }
+
+                return removedCount;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to clean stale entries from {PidFilePath}", PidFilePath);
+                return 0;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Get all registered process IDs from the opentelwatcher.pid file
+    /// </summary>
+    [Obsolete("Use GetRegisteredEntries() instead")]
+    public IReadOnlyList<int> GetRegisteredPids()
+    {
+        return GetRegisteredEntries().Select(e => e.Pid).ToList();
     }
 }

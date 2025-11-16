@@ -33,7 +33,8 @@ public class StartCommandTests
             }
         };
         var mockWebHost = new MockWebApplicationHost();
-        var command = new StartCommand(mockApiClient, mockWebHost, TestLoggerFactory.CreateLogger<StartCommand>());
+        var mockPidFileService = new MockPidFileService();
+        var command = new StartCommand(mockApiClient, mockWebHost, mockPidFileService, TestLoggerFactory.CreateLogger<StartCommand>());
         var options = new CommandOptions { Port = 4318 };
 
         // Act
@@ -67,7 +68,8 @@ public class StartCommandTests
             }
         };
         var mockWebHost = new MockWebApplicationHost();
-        var command = new StartCommand(mockApiClient, mockWebHost, TestLoggerFactory.CreateLogger<StartCommand>());
+        var mockPidFileService = new MockPidFileService();
+        var command = new StartCommand(mockApiClient, mockWebHost, mockPidFileService, TestLoggerFactory.CreateLogger<StartCommand>());
         var options = new CommandOptions { Port = 4318 };
 
         // Act
@@ -95,7 +97,8 @@ public class StartCommandTests
                 Errors = new List<string> { "Port must be between 1 and 65535" }
             }
         };
-        var command = new StartCommand(mockApiClient, mockWebHost, TestLoggerFactory.CreateLogger<StartCommand>());
+        var mockPidFileService = new MockPidFileService();
+        var command = new StartCommand(mockApiClient, mockWebHost, mockPidFileService, TestLoggerFactory.CreateLogger<StartCommand>());
         var options = new CommandOptions { Port = 99999 };
 
         // Act
@@ -120,7 +123,8 @@ public class StartCommandTests
             ValidationResultToReturn = ValidationResult.Success(),
             ExitCodeToReturn = 0
         };
-        var command = new StartCommand(mockApiClient, mockWebHost, TestLoggerFactory.CreateLogger<StartCommand>());
+        var mockPidFileService = new MockPidFileService();
+        var command = new StartCommand(mockApiClient, mockWebHost, mockPidFileService, TestLoggerFactory.CreateLogger<StartCommand>());
         var options = new CommandOptions
         {
             Port = 4318,
@@ -158,7 +162,8 @@ public class StartCommandTests
             ValidationResultToReturn = ValidationResult.Success(),
             ExitCodeToReturn = 1 // Non-zero exit code
         };
-        var command = new StartCommand(mockApiClient, mockWebHost, TestLoggerFactory.CreateLogger<StartCommand>());
+        var mockPidFileService = new MockPidFileService();
+        var command = new StartCommand(mockApiClient, mockWebHost, mockPidFileService, TestLoggerFactory.CreateLogger<StartCommand>());
         var options = new CommandOptions
         {
             Port = 4318,
@@ -187,7 +192,8 @@ public class StartCommandTests
             ValidationResultToReturn = ValidationResult.Success(),
             ExceptionToThrow = new InvalidOperationException("Test exception")
         };
-        var command = new StartCommand(mockApiClient, mockWebHost, TestLoggerFactory.CreateLogger<StartCommand>());
+        var mockPidFileService = new MockPidFileService();
+        var command = new StartCommand(mockApiClient, mockWebHost, mockPidFileService, TestLoggerFactory.CreateLogger<StartCommand>());
         var options = new CommandOptions
         {
             Port = 4318,
@@ -217,7 +223,8 @@ public class StartCommandTests
             ValidationResultToReturn = ValidationResult.Success(),
             ExitCodeToReturn = 0
         };
-        var command = new StartCommand(mockApiClient, mockWebHost, TestLoggerFactory.CreateLogger<StartCommand>());
+        var mockPidFileService = new MockPidFileService();
+        var command = new StartCommand(mockApiClient, mockWebHost, mockPidFileService, TestLoggerFactory.CreateLogger<StartCommand>());
         var options = new CommandOptions
         {
             Port = 4318,
@@ -257,7 +264,8 @@ public class StartCommandTests
             ValidationResultToReturn = ValidationResult.Success(),
             ExitCodeToReturn = 0
         };
-        var command = new StartCommand(mockApiClient, mockWebHost, TestLoggerFactory.CreateLogger<StartCommand>());
+        var mockPidFileService = new MockPidFileService();
+        var command = new StartCommand(mockApiClient, mockWebHost, mockPidFileService, TestLoggerFactory.CreateLogger<StartCommand>());
         var options = new CommandOptions
         {
             Port = 5000,
@@ -291,7 +299,8 @@ public class StartCommandTests
             ValidationResultToReturn = ValidationResult.Success(),
             ExitCodeToReturn = 0
         };
-        var command = new StartCommand(mockApiClient, mockWebHost, TestLoggerFactory.CreateLogger<StartCommand>());
+        var mockPidFileService = new MockPidFileService();
+        var command = new StartCommand(mockApiClient, mockWebHost, mockPidFileService, TestLoggerFactory.CreateLogger<StartCommand>());
         var options = new CommandOptions
         {
             Port = 4318,
@@ -326,7 +335,8 @@ public class StartCommandTests
             ValidationResultToReturn = ValidationResult.Success(),
             ExitCodeToReturn = 0
         };
-        var command = new StartCommand(mockApiClient, mockWebHost, TestLoggerFactory.CreateLogger<StartCommand>());
+        var mockPidFileService = new MockPidFileService();
+        var command = new StartCommand(mockApiClient, mockWebHost, mockPidFileService, TestLoggerFactory.CreateLogger<StartCommand>());
         var options = new CommandOptions
         {
             Port = 4318,
@@ -360,7 +370,8 @@ public class StartCommandTests
             ValidationResultToReturn = ValidationResult.Success(),
             ExitCodeToReturn = 0
         };
-        var command = new StartCommand(mockApiClient, mockWebHost, TestLoggerFactory.CreateLogger<StartCommand>());
+        var mockPidFileService = new MockPidFileService();
+        var command = new StartCommand(mockApiClient, mockWebHost, mockPidFileService, TestLoggerFactory.CreateLogger<StartCommand>());
         var options = new CommandOptions
         {
             Port = 4318,
@@ -392,7 +403,8 @@ public class StartCommandTests
             ValidationResultToReturn = ValidationResult.Success(),
             ExitCodeToReturn = 0
         };
-        var command = new StartCommand(mockApiClient, mockWebHost, TestLoggerFactory.CreateLogger<StartCommand>());
+        var mockPidFileService = new MockPidFileService();
+        var command = new StartCommand(mockApiClient, mockWebHost, mockPidFileService, TestLoggerFactory.CreateLogger<StartCommand>());
         var options = new CommandOptions
         {
             Port = 4318,

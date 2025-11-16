@@ -9,21 +9,11 @@
       <WatcherExePath>$(MSBuildThisFileDirectory)artifacts\bin\watcher\Debug\watcher.pid</WatcherExePath>
     </PropertyGroup>
 
-    <!-- MSBuild-native approach: Delete files first, then remove directories -->
-    <!-- Step 1: Delete all files recursively -->
-    <ItemGroup>
-      <TestResultsFiles Include="$(TestResultsPath)\**\*.*" />
-    </ItemGroup>
-    <Delete Files="@(TestResultsFiles)" ContinueOnError="true" />
-
-    <!-- Step 2: Enumerate and remove all subdirectories using ItemGroup expansion -->
-    <ItemGroup>
-      <TestResultsSubDirs Include="$(TestResultsPath)\**\" />
-    </ItemGroup>
-    <RemoveDir Directories="@(TestResultsSubDirs)" ContinueOnError="true" />
-
-    <!-- Step 3: Remove the root test-results directory -->
-    <RemoveDir Directories="$(TestResultsPath)" Condition="Exists('$(TestResultsPath)')" ContinueOnError="true" />
+    <!-- Use PowerShell for recursive deletion (handles long paths better than MSBuild) -->
+    <Exec Command="powershell -NoProfile -Command &quot;if (Test-Path '$(TestResultsPath)') { Remove-Item -Path '$(TestResultsPath)' -Recurse -Force -ErrorAction SilentlyContinue }&quot;"
+          Condition="Exists('$(TestResultsPath)')"
+          ContinueOnError="true"
+          IgnoreExitCode="true" />
 
     <!-- Recreate test-results directory structure -->
     <MakeDir Directories="$(TestResultsPath)\unit" />
