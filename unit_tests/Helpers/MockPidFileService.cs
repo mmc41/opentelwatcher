@@ -49,8 +49,4 @@ public class MockPidFileService : IPidFileService
         var removed = Entries.RemoveAll(e => !e.IsRunning());
         return CleanedCount > 0 ? CleanedCount : removed;
     }
-
-    [Obsolete("Use GetRegisteredEntries() instead")]
-    public IReadOnlyList<int> GetRegisteredPids() =>
-        Entries.Select(e => e.Pid).ToList();
 }

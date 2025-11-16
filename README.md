@@ -1322,7 +1322,6 @@ dotnet run
 |----------|--------|---------|
 | `/` | GET | Status dashboard (web UI) |
 | `/healthz` | GET | Health check status (200=healthy, 503=degraded) |
-| `/diagnose` | GET | Runtime diagnostics and statistics (legacy, deprecated) |
 
 #### API Endpoints (Management & Control)
 
@@ -1398,8 +1397,6 @@ curl http://127.0.0.1:4318/api/diagnose
 ```bash
 curl "http://127.0.0.1:4318/api/diagnose?signal=traces"
 ```
-
-**Note:** The legacy `/diagnose` endpoint is also available but deprecated. Use `/api/diagnose` for new integrations.
 
 ### Version Information
 
@@ -1580,11 +1577,6 @@ Use 'opentelwatcher stop' to stop the running instance first.
 ```
 
 This friendly error appears when the pre-flight check detects an instance already running.
-
-**Legacy Error (if pre-flight check fails):**
-```
-System.IO.IOException: Failed to bind to address http://127.0.0.1:4318: address already in use.
-```
 
 **Solution:**
 1. Stop the running instance:

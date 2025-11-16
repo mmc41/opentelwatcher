@@ -53,7 +53,6 @@ public sealed class CliApplication
         rootCommand.Subcommands.Add(BuildStartCommand());
         rootCommand.Subcommands.Add(BuildStopCommand());
         rootCommand.Subcommands.Add(BuildStatusCommand());
-        rootCommand.Subcommands.Add(BuildStatsCommand());
         rootCommand.Subcommands.Add(BuildListCommand());
         rootCommand.Subcommands.Add(BuildClearCommand());
 
@@ -354,58 +353,6 @@ public sealed class CliApplication
 
         return statusCommand;
     }
-
-    private Command BuildStatsCommand()
-    {
-        var portOption = new Option<int>("--port")
-        {
-            Description = "Port number to query (default: 4318)",
-            DefaultValueFactory = _ => 4318
-        };
-
-        var silentOption = new Option<bool>("--silent")
-        {
-            Description = "Suppress all console output except errors",
-            DefaultValueFactory = _ => false
-        };
-
-        var jsonOption = new Option<bool>("--json")
-        {
-            Description = "Output results in JSON format",
-            DefaultValueFactory = _ => false
-        };
-
-        var statsCommand = new Command("stats", "Show telemetry and file statistics (alias for status --verbose)\n\n" +
-            "Displays detailed telemetry request counts (traces, logs, metrics),\n" +
-            "file breakdown by type, and uptime.\n\n" +
-            "Options:\n" +
-            "  --port <number>          Port number to query (default: 4318)\n" +
-            "  --silent                 Suppress all output except errors\n" +
-            "  --json                   Output results in JSON format")
-        {
-            portOption,
-            silentOption,
-            jsonOption
-        };
-
-        statsCommand.SetAction(parseResult =>
-        {
-            var port = parseResult.GetValue(portOption);
-            var silent = parseResult.GetValue(silentOption);
-            var json = parseResult.GetValue(jsonOption);
-
-            var services = BuildServiceProvider(port);
-            var command = services.GetRequiredService<StatusCommand>();
-            // Always enable stats-only mode for stats command
-            var result = command.ExecuteAsync(statsOnly: true, quiet: silent, jsonOutput: json).GetAwaiter().GetResult();
-
-            // Command handles its own console output
-            return result.ExitCode;
-        });
-
-        return statsCommand;
-    }
-
 
     private Command BuildClearCommand()
     {

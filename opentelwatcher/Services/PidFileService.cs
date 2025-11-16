@@ -172,23 +172,9 @@ public sealed class PidFileService : IPidFileService
                         var entry = JsonSerializer.Deserialize<PidEntry>(line, JsonOptions);
                         if (entry != null) entries.Add(entry);
                     }
-                    catch (JsonException)
+                    catch (JsonException ex)
                     {
-                        // Try parsing as legacy format (plain integer)
-                        if (int.TryParse(line.Trim(), out var pid))
-                        {
-                            // Create legacy entry with unknown port and timestamp
-                            entries.Add(new PidEntry
-                            {
-                                Pid = pid,
-                                Port = 0, // Unknown
-                                Timestamp = DateTime.MinValue // Unknown
-                            });
-                        }
-                        else
-                        {
-                            _logger.LogWarning("Failed to parse PID entry: {Line}", line);
-                        }
+                        _logger.LogWarning(ex, "Failed to parse PID entry: {Line}", line);
                     }
                 }
 
@@ -268,14 +254,5 @@ public sealed class PidFileService : IPidFileService
                 return 0;
             }
         }
-    }
-
-    /// <summary>
-    /// Get all registered process IDs from the opentelwatcher.pid file
-    /// </summary>
-    [Obsolete("Use GetRegisteredEntries() instead")]
-    public IReadOnlyList<int> GetRegisteredPids()
-    {
-        return GetRegisteredEntries().Select(e => e.Pid).ToList();
     }
 }

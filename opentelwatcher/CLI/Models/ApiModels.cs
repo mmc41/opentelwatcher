@@ -39,38 +39,7 @@ public sealed record StatusResponse
 }
 
 /// <summary>
-/// Response from /api/info endpoint (deprecated - use /api/status instead)
-/// </summary>
-[Obsolete("Use StatusResponse instead. This endpoint has been renamed to /api/status")]
-public sealed record InfoResponse
-{
-    [JsonPropertyName("application")]
-    public required string Application { get; init; }
-
-    [JsonPropertyName("version")]
-    public required string Version { get; init; }
-
-    [JsonPropertyName("versionComponents")]
-    public required VersionComponents VersionComponents { get; init; }
-
-    [JsonPropertyName("processId")]
-    public required int ProcessId { get; init; }
-
-    [JsonPropertyName("port")]
-    public required int Port { get; init; }
-
-    [JsonPropertyName("health")]
-    public required DiagnoseHealth Health { get; init; }
-
-    [JsonPropertyName("files")]
-    public required FileStatistics Files { get; init; }
-
-    [JsonPropertyName("configuration")]
-    public required DiagnoseConfiguration Configuration { get; init; }
-}
-
-/// <summary>
-/// Response from /api/version endpoint (deprecated - use /api/info instead)
+/// Response from /api/version endpoint
 /// </summary>
 public sealed record VersionResponse
 {
@@ -115,19 +84,6 @@ public sealed record StopResponse
 }
 
 /// <summary>
-/// Response from /api/shutdown endpoint (deprecated - use /api/stop instead)
-/// </summary>
-[Obsolete("Use StopResponse instead. This endpoint has been renamed to /api/stop")]
-public sealed record ShutdownResponse
-{
-    [JsonPropertyName("message")]
-    public required string Message { get; init; }
-
-    [JsonPropertyName("timestamp")]
-    public required DateTime Timestamp { get; init; }
-}
-
-/// <summary>
 /// Response from /api/clear endpoint
 /// </summary>
 public sealed record ClearResponse
@@ -143,21 +99,6 @@ public sealed record ClearResponse
 
     [JsonPropertyName("timestamp")]
     public required DateTime Timestamp { get; init; }
-}
-
-/// <summary>
-/// Response from /api/diagnose endpoint (deprecated - use /api/info instead)
-/// </summary>
-public sealed record DiagnoseResponse
-{
-    [JsonPropertyName("health")]
-    public required DiagnoseHealth Health { get; init; }
-
-    [JsonPropertyName("files")]
-    public required FileStatistics Files { get; init; }
-
-    [JsonPropertyName("configuration")]
-    public required DiagnoseConfiguration Configuration { get; init; }
 }
 
 public sealed record DiagnoseHealth
@@ -197,21 +138,6 @@ public sealed record StatusFileStatistics
 
     [JsonPropertyName("breakdown")]
     public required FileBreakdown Breakdown { get; init; }
-}
-
-/// <summary>
-/// Individual file information (deprecated - no longer returned by API)
-/// </summary>
-public sealed record DiagnoseFile
-{
-    [JsonPropertyName("path")]
-    public required string Path { get; init; }
-
-    [JsonPropertyName("sizeBytes")]
-    public required long SizeBytes { get; init; }
-
-    [JsonPropertyName("lastModified")]
-    public required string LastModified { get; init; }
 }
 
 public sealed record DiagnoseConfiguration

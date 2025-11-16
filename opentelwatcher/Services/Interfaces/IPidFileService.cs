@@ -77,8 +77,4 @@ public interface IPidFileService
     /// Gets the path to the PID file
     /// </summary>
     string PidFilePath { get; }
-
-    // DEPRECATED - keep for backward compatibility
-    [Obsolete("Use GetRegisteredEntries() instead")]
-    IReadOnlyList<int> GetRegisteredPids();
 }

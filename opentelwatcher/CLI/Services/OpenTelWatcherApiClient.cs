@@ -116,31 +116,6 @@ public sealed class OpenTelWatcherApiClient : IOpenTelWatcherApiClient
         };
     }
 
-    [Obsolete("Use GetStatusAsync instead")]
-    public async Task<InfoResponse?> GetInfoAsync()
-    {
-        var status = await GetStatusAsync();
-        if (status is null)
-            return null;
-
-        // Map StatusResponse back to InfoResponse for backward compatibility
-        return new InfoResponse
-        {
-            Application = status.Application,
-            Version = status.Version,
-            VersionComponents = status.VersionComponents,
-            ProcessId = status.ProcessId,
-            Port = status.Port,
-            Health = status.Health,
-            Files = new FileStatistics
-            {
-                Count = status.Files.Count,
-                TotalSizeBytes = status.Files.TotalSizeBytes
-            },
-            Configuration = status.Configuration
-        };
-    }
-
     public async Task<bool> StopAsync()
     {
         try
@@ -160,12 +135,6 @@ public sealed class OpenTelWatcherApiClient : IOpenTelWatcherApiClient
         }
     }
 
-    [Obsolete("Use StopAsync instead")]
-    public async Task<bool> ShutdownAsync()
-    {
-        return await StopAsync();
-    }
-
     public async Task<bool> WaitForStopAsync(int timeoutSeconds = ApiConstants.Timeouts.ShutdownWaitSeconds)
     {
         var endTime = DateTime.UtcNow.AddSeconds(timeoutSeconds);
@@ -183,12 +152,6 @@ public sealed class OpenTelWatcherApiClient : IOpenTelWatcherApiClient
         }
 
         return false; // Timeout
-    }
-
-    [Obsolete("Use WaitForStopAsync instead")]
-    public async Task<bool> WaitForShutdownAsync(int timeoutSeconds = ApiConstants.Timeouts.ShutdownWaitSeconds)
-    {
-        return await WaitForStopAsync(timeoutSeconds);
     }
 
     public async Task<ClearResponse?> ClearAsync()
@@ -213,21 +176,5 @@ public sealed class OpenTelWatcherApiClient : IOpenTelWatcherApiClient
             _logger.LogDebug(ex, "Request timed out (service not responding)");
             return null;
         }
-    }
-
-    [Obsolete("Use GetStatusAsync instead. Statistics are now included in the status response.")]
-    public async Task<StatsResponse?> GetStatsAsync()
-    {
-        var status = await GetStatusAsync();
-        if (status is null)
-            return null;
-
-        // Map StatusResponse to StatsResponse for backward compatibility
-        return new StatsResponse
-        {
-            Telemetry = status.Telemetry,
-            Files = status.Files.Breakdown,
-            UptimeSeconds = status.UptimeSeconds
-        };
     }
 }

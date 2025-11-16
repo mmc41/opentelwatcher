@@ -182,7 +182,7 @@ dotnet run --project opentelwatcher -- clear --output-dir ./telemetry-data --ver
 dotnet run --project opentelwatcher -- --help
 ```
 
-**CLI Commands (5 core + 1 alias):**
+**CLI Commands (5 core):**
 - `opentelwatcher` (no args) - Display help and available commands
 - `opentelwatcher start` - Start the watcher service with optional configuration
   - `--port <number>` - Port number (default: 4318)
@@ -198,7 +198,6 @@ dotnet run --project opentelwatcher -- --help
   - `--json` - Output in JSON format
   - `--output-dir, -o <path>` - Standalone filesystem mode (scan directory for errors)
   - Exit codes: 0 (healthy/no errors), 1 (unhealthy/errors detected), 2 (system error)
-- `opentelwatcher stats` - Alias for `status --stats-only` (backward compatibility)
 - `opentelwatcher list` - List telemetry files
   - `--signal <type>` - Filter by signal type (traces, logs, metrics)
   - `--errors-only` - List only error files
