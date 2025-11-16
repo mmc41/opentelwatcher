@@ -163,7 +163,7 @@ public class WebApplicationHost : IWebApplicationHost
         var assembly = typeof(Program).Assembly;
         app.UseStaticFiles(new StaticFileOptions
         {
-            FileProvider = new EmbeddedFileProvider(assembly, "watcher.web"),
+            FileProvider = new EmbeddedFileProvider(assembly, "opentelwatcher.web"),
             RequestPath = "/web"
         });
 
