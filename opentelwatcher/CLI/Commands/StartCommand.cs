@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using System.Diagnostics;
 using System.Reflection;
+using System.Text.Json;
 using OpenTelWatcher.Configuration;
 using OpenTelWatcher.CLI.Models;
 using OpenTelWatcher.CLI.Services;
@@ -25,45 +26,30 @@ public sealed class StartCommand
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
-    public async Task<CommandResult> ExecuteAsync(CommandOptions options)
+    public async Task<CommandResult> ExecuteAsync(CommandOptions options, bool jsonOutput = false)
     {
-        // Get CLI version
+        var result = new Dictionary<string, object>
+        {
+            ["port"] = options.Port,
+            ["outputDirectory"] = options.OutputDirectory,
+            ["daemon"] = options.Daemon
+        };
+
         var cliVersion = Assembly.GetExecutingAssembly().GetName().Version ?? new Version(1, 0, 0);
 
-        // Pre-flight check: is instance already running?
+        // Step 1: Check if instance already running
         var status = await _apiClient.GetInstanceStatusAsync(cliVersion);
-
         if (status.IsRunning && status.IsCompatible)
         {
-            var config = new OpenTelWatcher.Utilities.ApplicationInfoConfig
-            {
-                Version = status.Version!.Version,
-                Port = options.Port,
-                OutputDirectory = options.OutputDirectory,
-                Silent = options.Silent,
-                ErrorMessage = $"Instance already running on port {options.Port}",
-                ErrorDetails = "\nUse 'opentelwatcher stop' to stop the running instance first."
-            };
-            OpenTelWatcher.Utilities.ApplicationInfoDisplay.Display(OpenTelWatcher.Utilities.DisplayMode.Error, config);
-            return CommandResult.UserError("Instance already running");
+            return BuildInstanceAlreadyRunningResult(result, options.Silent, jsonOutput);
         }
 
         if (status.IsRunning && !status.IsCompatible)
         {
-            var config = new OpenTelWatcher.Utilities.ApplicationInfoConfig
-            {
-                Version = status.Version!.Version,
-                Port = options.Port,
-                OutputDirectory = options.OutputDirectory,
-                Silent = options.Silent,
-                ErrorMessage = $"Incompatible instance detected on port {options.Port}",
-                ErrorDetails = $"{status.IncompatibilityReason}\n\nStop the incompatible instance before starting a new one."
-            };
-            OpenTelWatcher.Utilities.ApplicationInfoDisplay.Display(OpenTelWatcher.Utilities.DisplayMode.Error, config);
-            return CommandResult.SystemError("Incompatible instance detected");
+            return BuildIncompatibleInstanceResult(result, status.IncompatibilityReason!, options.Silent, jsonOutput);
         }
 
-        // Convert to ServerOptions
+        // Step 2: Validate configuration
         var serverOptions = new ServerOptions
         {
             Port = options.Port,
@@ -74,52 +60,175 @@ public sealed class StartCommand
             Verbose = options.Verbose
         };
 
-        // Validate options
         var validationResult = _webHost.Validate(serverOptions);
         if (!validationResult.IsValid)
         {
-            foreach (var error in validationResult.Errors)
-            {
-                Console.Error.WriteLine($"Configuration error: {error}");
-            }
-            return CommandResult.UserError("Invalid configuration");
+            return BuildInvalidConfigurationResult(result, validationResult.Errors, options.Silent, jsonOutput);
         }
 
-        // Create output directory if it doesn't exist
+        // Step 3: Create output directory
         try
         {
             if (!Directory.Exists(options.OutputDirectory))
             {
                 Directory.CreateDirectory(options.OutputDirectory);
-                Console.WriteLine($"Created output directory: {NormalizePathForDisplay(options.OutputDirectory)}");
+                result["directoryCreated"] = true;
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error: Cannot create output directory");
-            Console.WriteLine($"  Path: {NormalizePathForDisplay(options.OutputDirectory)}");
-            Console.WriteLine($"  Details: {ex.Message}");
-            return CommandResult.SystemError("Cannot create output directory");
+            return BuildDirectoryCreationFailedResult(result, options.OutputDirectory, ex.Message, options.Silent, jsonOutput);
         }
 
-        // Daemon mode: fork process and exit
+        // Step 4: Start server (daemon or normal mode)
         if (options.Daemon)
         {
-            return await ForkDaemonAndExitAsync(options);
+            result["method"] = "daemon";
+            return await ForkDaemonAndExitAsync(options, jsonOutput, result);
         }
 
-        // Normal mode: start the server (THIS ACTUALLY STARTS THE SERVER!)
+        // Normal mode: start the server
+        return await StartServerNormalModeAsync(result, serverOptions, options.Silent, jsonOutput);
+    }
+
+    private CommandResult BuildInstanceAlreadyRunningResult(Dictionary<string, object> result, bool silent, bool jsonOutput)
+    {
+        result["success"] = false;
+        result["error"] = "Instance already running";
+        result["message"] = "Use 'opentelwatcher stop' to stop the running instance first.";
+        OutputResult(result, jsonOutput, silent, isError: true, errorType: "Instance already running");
+        return CommandResult.UserError("Instance already running");
+    }
+
+    private CommandResult BuildIncompatibleInstanceResult(Dictionary<string, object> result, string reason, bool silent, bool jsonOutput)
+    {
+        result["success"] = false;
+        result["error"] = "Incompatible instance detected";
+        result["reason"] = reason;
+        result["message"] = "Stop the incompatible instance before starting a new one.";
+        OutputResult(result, jsonOutput, silent, isError: true, errorType: "Incompatible instance");
+        return CommandResult.SystemError("Incompatible instance detected");
+    }
+
+    private CommandResult BuildInvalidConfigurationResult(Dictionary<string, object> result, List<string> errors, bool silent, bool jsonOutput)
+    {
+        result["success"] = false;
+        result["error"] = "Invalid configuration";
+        result["errors"] = errors;
+        OutputResult(result, jsonOutput, silent, isError: true, errorType: "Invalid configuration");
+        return CommandResult.UserError("Invalid configuration");
+    }
+
+    private CommandResult BuildDirectoryCreationFailedResult(Dictionary<string, object> result, string path, string details, bool silent, bool jsonOutput)
+    {
+        result["success"] = false;
+        result["error"] = "Cannot create output directory";
+        result["path"] = NormalizePathForDisplay(path);
+        result["details"] = details;
+        OutputResult(result, jsonOutput, silent, isError: true, errorType: "Directory creation failed");
+        return CommandResult.SystemError("Cannot create output directory");
+    }
+
+    private async Task<CommandResult> StartServerNormalModeAsync(Dictionary<string, object> result, ServerOptions serverOptions, bool silent, bool jsonOutput)
+    {
+        result["method"] = "normal";
+
         try
         {
             var exitCode = await _webHost.RunAsync(serverOptions);
+            result["success"] = exitCode == 0;
+            result["exitCode"] = exitCode;
+            result["message"] = exitCode == 0 ? "Server stopped gracefully" : $"Server exited with code {exitCode}";
+
+            OutputResult(result, jsonOutput, silent, isError: exitCode != 0, errorType: exitCode != 0 ? "Server exited with error" : null);
+
             return exitCode == 0
                 ? CommandResult.Success("Server stopped gracefully")
                 : CommandResult.SystemError($"Server exited with code {exitCode}");
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"Error starting server: {ex.Message}");
+            result["success"] = false;
+            result["error"] = "Server failed to start";
+            result["details"] = ex.Message;
+            OutputResult(result, jsonOutput, silent, isError: true, errorType: "Server failed to start");
             return CommandResult.SystemError("Server failed to start");
+        }
+    }
+
+    private void OutputResult(Dictionary<string, object> result, bool jsonOutput, bool silent, bool isError, string? errorType = null)
+    {
+        if (jsonOutput)
+        {
+            Console.WriteLine(JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));
+            return;
+        }
+
+        if (silent)
+        {
+            return;
+        }
+
+        if (isError)
+        {
+            OutputErrorText(result, errorType!);
+        }
+        else
+        {
+            OutputSuccessText(result);
+        }
+    }
+
+    private void OutputErrorText(Dictionary<string, object> result, string errorType)
+    {
+        switch (errorType)
+        {
+            case "Instance already running":
+                Console.WriteLine($"Instance already running on port {result["port"]}");
+                Console.WriteLine((string)result["message"]);
+                break;
+
+            case "Incompatible instance":
+                Console.WriteLine($"Incompatible instance detected on port {result["port"]}");
+                Console.WriteLine($"  {result["reason"]}");
+                Console.WriteLine();
+                Console.WriteLine("Stop the incompatible instance before starting a new one.");
+                break;
+
+            case "Invalid configuration":
+                var errors = (List<string>)result["errors"];
+                foreach (var err in errors)
+                {
+                    Console.Error.WriteLine($"Configuration error: {err}");
+                }
+                break;
+
+            case "Directory creation failed":
+                Console.WriteLine("Error: Cannot create output directory");
+                Console.WriteLine($"  Path: {result["path"]}");
+                Console.WriteLine($"  Details: {result["details"]}");
+                break;
+
+            case "Server failed to start":
+                Console.Error.WriteLine($"Error starting server: {result["details"]}");
+                break;
+
+            case "Server exited with error":
+                Console.WriteLine((string)result["message"]);
+                break;
+        }
+    }
+
+    private void OutputSuccessText(Dictionary<string, object> result)
+    {
+        if (result.ContainsKey("directoryCreated") && (bool)result["directoryCreated"])
+        {
+            Console.WriteLine($"Created output directory: {NormalizePathForDisplay((string)result["outputDirectory"])}");
+        }
+
+        if (result.ContainsKey("exitCode"))
+        {
+            Console.WriteLine((string)result["message"]);
         }
     }
 
@@ -128,10 +237,10 @@ public sealed class StartCommand
     /// Moved from Program.cs to keep daemon logic with command handling.
     /// Note: Pre-flight checks are already performed by ExecuteAsync() before calling this method.
     /// </summary>
-    private async Task<CommandResult> ForkDaemonAndExitAsync(CommandOptions options)
+    private async Task<CommandResult> ForkDaemonAndExitAsync(CommandOptions options, bool jsonOutput, Dictionary<string, object> result)
     {
         // Ensure output directory exists
-        var createDirResult = EnsureOutputDirectoryExists(options.OutputDirectory);
+        var createDirResult = EnsureOutputDirectoryExists(options.OutputDirectory, jsonOutput, options.Silent);
         if (!createDirResult.IsSuccess)
             return createDirResult;
 
@@ -141,30 +250,70 @@ public sealed class StartCommand
         // Determine process execution info (path, whether we need dotnet)
         var execInfo = DetermineProcessExecutionInfo();
         if (!execInfo.IsValid)
+        {
+            result["success"] = false;
+            result["error"] = execInfo.Error!;
+
+            if (jsonOutput)
+            {
+                Console.WriteLine(JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));
+            }
+            else if (!options.Silent)
+            {
+                Console.WriteLine($"Error: {execInfo.Error}");
+            }
+
             return CommandResult.SystemError(execInfo.Error!);
+        }
 
         // Build platform-specific process start info
         var startInfo = BuildProcessStartInfo(execInfo, childArgs);
         if (startInfo == null)
+        {
+            result["success"] = false;
+            result["error"] = "nohup command not found";
+
+            if (jsonOutput)
+            {
+                Console.WriteLine(JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));
+            }
+            // Error message already printed by BuildProcessStartInfo on non-Windows
+
             return CommandResult.SystemError("nohup command not found");
+        }
 
         // Start the daemon process
-        Console.WriteLine("Starting opentelwatcher in background...");
+        if (!jsonOutput && !options.Silent)
+        {
+            Console.WriteLine("Starting opentelwatcher in background...");
+        }
+
         var process = Process.Start(startInfo);
         if (process == null)
         {
-            Console.WriteLine("Error: Failed to start process");
+            result["success"] = false;
+            result["error"] = "Failed to start process";
+
+            if (jsonOutput)
+            {
+                Console.WriteLine(JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));
+            }
+            else if (!options.Silent)
+            {
+                Console.WriteLine("Error: Failed to start process");
+            }
+
             return CommandResult.SystemError("Failed to start process");
         }
 
         // Verify daemon started successfully
-        return await VerifyDaemonStartup(process, options, execInfo.IsUnixNohup);
+        return await VerifyDaemonStartup(process, options, execInfo.IsUnixNohup, jsonOutput, result);
     }
 
     /// <summary>
     /// Ensures the output directory exists, creating it if necessary.
     /// </summary>
-    private CommandResult EnsureOutputDirectoryExists(string outputDirectory)
+    private CommandResult EnsureOutputDirectoryExists(string outputDirectory, bool jsonOutput, bool silent)
     {
         if (Directory.Exists(outputDirectory))
             return CommandResult.Success("Directory exists");
@@ -172,12 +321,30 @@ public sealed class StartCommand
         try
         {
             Directory.CreateDirectory(outputDirectory);
-            Console.WriteLine($"Created output directory: {NormalizePathForDisplay(outputDirectory)}");
+            if (!jsonOutput && !silent)
+            {
+                Console.WriteLine($"Created output directory: {NormalizePathForDisplay(outputDirectory)}");
+            }
             return CommandResult.Success("Directory created");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error: Cannot create output directory: {ex.Message}");
+            var result = new Dictionary<string, object>
+            {
+                ["success"] = false,
+                ["error"] = "Cannot create output directory",
+                ["details"] = ex.Message
+            };
+
+            if (jsonOutput)
+            {
+                Console.WriteLine(JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));
+            }
+            else if (!silent)
+            {
+                Console.WriteLine($"Error: Cannot create output directory: {ex.Message}");
+            }
+
             return CommandResult.SystemError("Cannot create output directory");
         }
     }
@@ -277,19 +444,34 @@ public sealed class StartCommand
     /// <summary>
     /// Verifies that the daemon started successfully via health checks.
     /// </summary>
-    private async Task<CommandResult> VerifyDaemonStartup(Process process, CommandOptions options, bool isUnixNohup)
+    private async Task<CommandResult> VerifyDaemonStartup(Process process, CommandOptions options, bool isUnixNohup, bool jsonOutput, Dictionary<string, object> result)
     {
         bool healthy = await WaitForHealthCheckAsync(_apiClient, timeoutSeconds: ApiConstants.Timeouts.HealthCheckSeconds);
 
         if (healthy)
         {
-            Console.WriteLine($"Watcher started successfully on port {options.Port}");
-            Console.WriteLine($"Output directory: {NormalizePathForDisplay(options.OutputDirectory)}");
+            result["success"] = true;
+            result["message"] = "Daemon started successfully";
+
+            if (jsonOutput)
+            {
+                Console.WriteLine(JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));
+            }
+            else if (!options.Silent)
+            {
+                Console.WriteLine($"Watcher started successfully on port {options.Port}");
+                Console.WriteLine($"Output directory: {NormalizePathForDisplay(options.OutputDirectory)}");
+            }
+
             return CommandResult.Success("Daemon started");
         }
 
         // Health check failed
-        Console.WriteLine($"Error: Watcher failed to start (no response after {ApiConstants.Timeouts.HealthCheckSeconds} seconds)");
+        result["success"] = false;
+        result["error"] = "Daemon failed to start";
+
+        var errorDetails = new List<string>();
+        errorDetails.Add($"No response after {ApiConstants.Timeouts.HealthCheckSeconds} seconds");
 
         // On Windows, check if child process is still running
         if (!isUnixNohup)
@@ -299,24 +481,43 @@ public sealed class StartCommand
                 process.Refresh();
                 if (process.HasExited)
                 {
-                    Console.WriteLine($"Child process exited unexpectedly with code: {process.ExitCode}");
+                    errorDetails.Add($"Child process exited unexpectedly with code: {process.ExitCode}");
                 }
                 else
                 {
-                    Console.WriteLine("Child process is running but not responding to health checks.");
+                    errorDetails.Add("Child process is running but not responding to health checks");
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Could not check child process status: {ex.Message}");
+                errorDetails.Add($"Could not check child process status: {ex.Message}");
             }
         }
         else
         {
-            Console.WriteLine("The daemon may have failed to start or is taking longer than expected.");
+            errorDetails.Add("The daemon may have failed to start or is taking longer than expected");
         }
 
-        Console.WriteLine("Tip: Run without --daemon to see detailed output and error messages.");
+        result["details"] = errorDetails;
+        result["tip"] = "Run without --daemon to see detailed output and error messages";
+
+        if (jsonOutput)
+        {
+            Console.WriteLine(JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));
+        }
+        else if (!options.Silent)
+        {
+            Console.WriteLine($"Error: Watcher failed to start (no response after {ApiConstants.Timeouts.HealthCheckSeconds} seconds)");
+
+            // Display details
+            foreach (var detail in errorDetails)
+            {
+                Console.WriteLine(detail);
+            }
+
+            Console.WriteLine("Tip: Run without --daemon to see detailed output and error messages.");
+        }
+
         return CommandResult.SystemError("Daemon failed to start");
     }
 

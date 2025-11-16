@@ -14,6 +14,16 @@ public sealed record CommandOptions
 }
 
 /// <summary>
+/// Command-line options for check command
+/// </summary>
+public sealed record CheckOptions
+{
+    public string OutputDir { get; init; } = "./telemetry-data";
+    public bool Verbose { get; init; } = false;
+    public bool JsonOutput { get; init; } = false;
+}
+
+/// <summary>
 /// Log level enumeration matching .NET standard levels
 /// </summary>
 public enum LogLevel
@@ -36,14 +46,20 @@ public sealed record CommandResult
     public required string Message { get; init; }
     public string? Details { get; init; }
 
-    public static CommandResult Success(string message, string? details = null) =>
-        new() { ExitCode = 0, Message = message, Details = details };
+    /// <summary>
+    /// Optional structured data for JSON output.
+    /// Used when commands are invoked with --json flag.
+    /// </summary>
+    public Dictionary<string, object>? Data { get; init; }
 
-    public static CommandResult UserError(string message, string? details = null) =>
-        new() { ExitCode = 1, Message = message, Details = details };
+    public static CommandResult Success(string message, string? details = null, Dictionary<string, object>? data = null) =>
+        new() { ExitCode = 0, Message = message, Details = details, Data = data };
 
-    public static CommandResult SystemError(string message, string? details = null) =>
-        new() { ExitCode = 2, Message = message, Details = details };
+    public static CommandResult UserError(string message, string? details = null, Dictionary<string, object>? data = null) =>
+        new() { ExitCode = 1, Message = message, Details = details, Data = data };
+
+    public static CommandResult SystemError(string message, string? details = null, Dictionary<string, object>? data = null) =>
+        new() { ExitCode = 2, Message = message, Details = details, Data = data };
 }
 
 /// <summary>

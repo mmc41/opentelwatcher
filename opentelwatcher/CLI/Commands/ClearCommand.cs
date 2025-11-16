@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using System.Reflection;
+using System.Text.Json;
 using OpenTelWatcher.CLI.Models;
 using OpenTelWatcher.CLI.Services;
 using OpenTelWatcher.Utilities;
@@ -20,130 +21,233 @@ public sealed class ClearCommand
         _loggerFactory = loggerFactory;
     }
 
-    public async Task<CommandResult> ExecuteAsync(string? outputDir = null, string defaultOutputDir = "./telemetry-data", bool verbose = false, bool silent = false)
+    public async Task<CommandResult> ExecuteAsync(string? outputDir = null, string defaultOutputDir = "./telemetry-data", bool verbose = false, bool silent = false, bool jsonOutput = false)
     {
-        // Get CLI version
         var cliVersion = Assembly.GetExecutingAssembly().GetName().Version ?? new Version(1, 0, 0);
-
-        // Check if instance is running
         var status = await _apiClient.GetInstanceStatusAsync(cliVersion);
 
         if (status.IsRunning)
         {
-            // Mode 1: Instance running - use API
-            return await ClearViaApiAsync(outputDir, verbose, silent);
+            return await ClearViaApiAsync(outputDir, verbose, silent, jsonOutput);
         }
         else
         {
-            // Mode 2: No instance - clear directly
-            return await ClearDirectlyAsync(outputDir, defaultOutputDir, verbose, silent);
+            return await ClearDirectlyAsync(outputDir, defaultOutputDir, verbose, silent, jsonOutput);
         }
     }
 
-    private async Task<CommandResult> ClearViaApiAsync(string? userProvidedOutputDir, bool verbose, bool silent)
+    private async Task<CommandResult> ClearViaApiAsync(string? userProvidedOutputDir, bool verbose, bool silent, bool jsonOutput)
     {
-        // Get before stats from /api/info
-        var infoBefore = await _apiClient.GetInfoAsync();
+        var result = new Dictionary<string, object>();
 
+        // Step 1: Get instance info
+        var infoBefore = await _apiClient.GetInfoAsync();
         if (infoBefore is null)
         {
-            Console.WriteLine("Error: Failed to retrieve application information");
-            return CommandResult.SystemError("Failed to retrieve info");
+            return BuildFailedToRetrieveInfoResult(result, silent, jsonOutput);
         }
 
+        // Step 2: Validate output directory
         var instanceOutputDir = infoBefore.Configuration.OutputDirectory;
-
-        // Validate output directory if user provided one
-        if (!string.IsNullOrWhiteSpace(userProvidedOutputDir))
+        if (!ValidateOutputDirectory(userProvidedOutputDir, instanceOutputDir, out var error))
         {
-            var userDirFullPath = Path.GetFullPath(userProvidedOutputDir);
-            var instanceDirFullPath = Path.GetFullPath(instanceOutputDir);
-
-            if (!string.Equals(userDirFullPath, instanceDirFullPath, StringComparison.OrdinalIgnoreCase))
-            {
-                if (!silent)
-                {
-                    Console.WriteLine("Error: Output directory mismatch");
-                    Console.WriteLine($"  Requested directory: {userDirFullPath}");
-                    Console.WriteLine($"  Instance directory:  {instanceDirFullPath}");
-                    Console.WriteLine();
-                    Console.WriteLine("The running instance is using a different output directory.");
-                    Console.WriteLine("Either omit --output-dir to use the instance's directory,");
-                    Console.WriteLine("or stop the instance and run clear in standalone mode.");
-                }
-                return CommandResult.UserError("Output directory mismatch");
-            }
+            return BuildDirectoryMismatchResult(result, userProvidedOutputDir!, instanceOutputDir, error!, silent, jsonOutput);
         }
 
+        // Step 3: Clear files via API
         var filesBefore = infoBefore.Files.Count;
         var sizeBeforeBytes = infoBefore.Files.TotalSizeBytes;
-        var outputDir = infoBefore.Configuration.OutputDirectory;
-
-        // Call /api/clear
         var clearResponse = await _apiClient.ClearAsync();
 
         if (clearResponse is null)
         {
-            Console.WriteLine("Error: Failed to clear telemetry data");
-            return CommandResult.SystemError("Failed to clear data");
+            return BuildClearFailedResult(result, silent, jsonOutput);
         }
 
-        // Display results
-        if (!silent)
-        {
-            DisplayClearResults(
-                outputDir,
-                filesBefore,
-                filesAfter: 0,
-                clearResponse.FilesDeleted,
-                sizeBeforeBytes,
-                verbose);
-        }
-
-        return CommandResult.Success("Telemetry data cleared");
+        // Step 4: Build success result
+        return BuildClearSuccessResult(result, instanceOutputDir, filesBefore, clearResponse.FilesDeleted, sizeBeforeBytes, verbose, silent, jsonOutput);
     }
 
-    private async Task<CommandResult> ClearDirectlyAsync(string? outputDir, string defaultOutputDir, bool verbose, bool silent)
+    private bool ValidateOutputDirectory(string? userProvidedOutputDir, string instanceOutputDir, out string? error)
     {
-        // Validate directory - use configuration-based default
-        outputDir ??= defaultOutputDir;
+        error = null;
 
-        if (!Directory.Exists(outputDir))
+        if (string.IsNullOrWhiteSpace(userProvidedOutputDir))
         {
-            if (!silent)
-            {
-                Console.WriteLine($"Directory not found: {outputDir}");
-                Console.WriteLine("No files to clear.");
-            }
-            return CommandResult.Success("No files to clear");
+            return true;
         }
 
+        var userDirFullPath = Path.GetFullPath(userProvidedOutputDir);
+        var instanceDirFullPath = Path.GetFullPath(instanceOutputDir);
+
+        if (!string.Equals(userDirFullPath, instanceDirFullPath, StringComparison.OrdinalIgnoreCase))
+        {
+            error = "The running instance is using a different output directory. Either omit --output-dir to use the instance's directory, or stop the instance and run clear in standalone mode.";
+            return false;
+        }
+
+        return true;
+    }
+
+    private CommandResult BuildFailedToRetrieveInfoResult(Dictionary<string, object> result, bool silent, bool jsonOutput)
+    {
+        result["success"] = false;
+        result["error"] = "Failed to retrieve application information";
+        OutputResult(result, jsonOutput, silent, isError: true, errorType: "Failed to retrieve info");
+        return CommandResult.SystemError("Failed to retrieve info");
+    }
+
+    private CommandResult BuildDirectoryMismatchResult(Dictionary<string, object> result, string requestedDir, string instanceDir, string message, bool silent, bool jsonOutput)
+    {
+        result["success"] = false;
+        result["error"] = "Output directory mismatch";
+        result["requestedDirectory"] = Path.GetFullPath(requestedDir);
+        result["instanceDirectory"] = Path.GetFullPath(instanceDir);
+        result["message"] = message;
+        OutputResult(result, jsonOutput, silent, isError: true, errorType: "Directory mismatch");
+        return CommandResult.UserError("Output directory mismatch");
+    }
+
+    private CommandResult BuildClearFailedResult(Dictionary<string, object> result, bool silent, bool jsonOutput)
+    {
+        result["success"] = false;
+        result["error"] = "Failed to clear telemetry data";
+        OutputResult(result, jsonOutput, silent, isError: true, errorType: "Clear failed");
+        return CommandResult.SystemError("Failed to clear data");
+    }
+
+    private CommandResult BuildClearSuccessResult(Dictionary<string, object> result, string outputDir, int filesBefore, int filesDeleted, long spaceFreedBytes, bool verbose, bool silent, bool jsonOutput)
+    {
+        result["success"] = true;
+        result["outputDirectory"] = outputDir;
+        result["filesBeforeCount"] = filesBefore;
+        result["filesAfterCount"] = 0;
+        result["filesDeleted"] = filesDeleted;
+        result["spaceFreedBytes"] = spaceFreedBytes;
+
+        OutputResult(result, jsonOutput, silent, isError: false, verbose: verbose);
+        return CommandResult.Success("Telemetry data cleared", data: new Dictionary<string, object>
+        {
+            ["result"] = result
+        });
+    }
+
+    private async Task<CommandResult> ClearDirectlyAsync(string? outputDir, string defaultOutputDir, bool verbose, bool silent, bool jsonOutput)
+    {
+        outputDir ??= defaultOutputDir;
+        var result = new Dictionary<string, object>();
+
+        // Step 1: Check if directory exists
+        if (!Directory.Exists(outputDir))
+        {
+            return BuildDirectoryNotFoundResult(result, outputDir, verbose, silent, jsonOutput);
+        }
+
+        // Step 2: Clear files directly
         try
         {
-            // Call static utility
-            var result = await TelemetryCleaner.ClearFilesAsync(_loggerFactory, outputDir, CancellationToken.None);
-
-            // Display results
-            if (!silent)
-            {
-                DisplayClearResults(
-                    result.DirectoryPath,
-                    result.FilesBeforeCount,
-                    filesAfter: 0,
-                    result.FilesDeleted,
-                    result.SpaceFreedBytes,
-                    verbose);
-            }
-
-            return CommandResult.Success("Telemetry data cleared");
+            var clearResult = await TelemetryCleaner.ClearFilesAsync(_loggerFactory, outputDir, CancellationToken.None);
+            return BuildClearSuccessResult(result, clearResult.DirectoryPath, clearResult.FilesBeforeCount, clearResult.FilesDeleted, clearResult.SpaceFreedBytes, verbose, silent, jsonOutput);
         }
         catch (Exception ex)
         {
-            if (!silent)
-            {
-                Console.WriteLine($"Error clearing telemetry data: {ex.Message}");
-            }
-            return CommandResult.SystemError("Failed to clear data");
+            return BuildClearExceptionResult(result, ex.Message, silent, jsonOutput);
+        }
+    }
+
+    private CommandResult BuildDirectoryNotFoundResult(Dictionary<string, object> result, string outputDir, bool verbose, bool silent, bool jsonOutput)
+    {
+        result["success"] = true;
+        result["outputDirectory"] = outputDir;
+        result["filesBeforeCount"] = 0;
+        result["filesAfterCount"] = 0;
+        result["filesDeleted"] = 0;
+        result["spaceFreedBytes"] = 0L;
+        result["message"] = "Directory not found";
+
+        OutputResult(result, jsonOutput, silent, isError: false, messageType: "Directory not found");
+        return CommandResult.Success("No files to clear", data: new Dictionary<string, object>
+        {
+            ["result"] = result
+        });
+    }
+
+    private CommandResult BuildClearExceptionResult(Dictionary<string, object> result, string exceptionMessage, bool silent, bool jsonOutput)
+    {
+        result["success"] = false;
+        result["error"] = "Failed to clear telemetry data";
+        result["details"] = exceptionMessage;
+        OutputResult(result, jsonOutput, silent, isError: true, errorType: "Exception");
+        return CommandResult.SystemError("Failed to clear data");
+    }
+
+    private void OutputResult(Dictionary<string, object> result, bool jsonOutput, bool silent, bool isError, string? errorType = null, string? messageType = null, bool verbose = false)
+    {
+        if (jsonOutput)
+        {
+            Console.WriteLine(JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));
+            return;
+        }
+
+        if (silent)
+        {
+            return;
+        }
+
+        if (isError)
+        {
+            OutputErrorText(result, errorType!);
+        }
+        else
+        {
+            OutputSuccessText(result, messageType, verbose);
+        }
+    }
+
+    private void OutputErrorText(Dictionary<string, object> result, string errorType)
+    {
+        switch (errorType)
+        {
+            case "Failed to retrieve info":
+                Console.WriteLine($"Error: {result["error"]}");
+                break;
+
+            case "Directory mismatch":
+                Console.WriteLine($"Error: {result["error"]}");
+                Console.WriteLine($"  Requested directory: {result["requestedDirectory"]}");
+                Console.WriteLine($"  Instance directory:  {result["instanceDirectory"]}");
+                Console.WriteLine();
+                Console.WriteLine("The running instance is using a different output directory.");
+                Console.WriteLine("Either omit --output-dir to use the instance's directory,");
+                Console.WriteLine("or stop the instance and run clear in standalone mode.");
+                break;
+
+            case "Clear failed":
+                Console.WriteLine($"Error: {result["error"]}");
+                break;
+
+            case "Exception":
+                Console.WriteLine($"Error clearing telemetry data: {result["details"]}");
+                break;
+        }
+    }
+
+    private void OutputSuccessText(Dictionary<string, object> result, string? messageType, bool verbose)
+    {
+        if (messageType == "Directory not found")
+        {
+            Console.WriteLine($"Directory not found: {result["outputDirectory"]}");
+            Console.WriteLine("No files to clear.");
+        }
+        else
+        {
+            DisplayClearResults(
+                (string)result["outputDirectory"],
+                (int)result["filesBeforeCount"],
+                (int)result["filesAfterCount"],
+                (int)result["filesDeleted"],
+                (long)result["spaceFreedBytes"],
+                verbose);
         }
     }
 

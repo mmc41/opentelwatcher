@@ -1,11 +1,33 @@
 <Project>
   <!-- Custom targets that run after test execution -->
 
-  <!-- Clean watcher.pid before running tests so we know that any entries forward are from test -->
-  <Target Name="CleanWatcherPid" BeforeTargets="VSTest" Condition="'$(IsTestProject)' == 'true'">
+  <!-- Clean test output directories before running tests -->
+  <Target Name="CleanTestOutputDirectories" BeforeTargets="VSTest" Condition="'$(IsTestProject)' == 'true'">
     <PropertyGroup>
+      <TestResultsPath>$(MSBuildThisFileDirectory)artifacts\test-results</TestResultsPath>
       <WatcherExePath>$(MSBuildThisFileDirectory)artifacts\bin\watcher\Debug\watcher.pid</WatcherExePath>
     </PropertyGroup>
+
+    <!-- MSBuild-native approach: Delete files first, then remove directories -->
+    <!-- Step 1: Delete all files recursively -->
+    <ItemGroup>
+      <TestResultsFiles Include="$(TestResultsPath)\**\*.*" />
+    </ItemGroup>
+    <Delete Files="@(TestResultsFiles)" ContinueOnError="true" />
+
+    <!-- Step 2: Enumerate and remove all subdirectories using ItemGroup expansion -->
+    <ItemGroup>
+      <TestResultsSubDirs Include="$(TestResultsPath)\**\" />
+    </ItemGroup>
+    <RemoveDir Directories="@(TestResultsSubDirs)" ContinueOnError="true" />
+
+    <!-- Step 3: Remove the root test-results directory -->
+    <RemoveDir Directories="$(TestResultsPath)" Condition="Exists('$(TestResultsPath)')" ContinueOnError="true" />
+
+    <!-- Recreate test-results directory structure -->
+    <MakeDir Directories="$(TestResultsPath)\unit" />
+    <MakeDir Directories="$(TestResultsPath)\e2e" />
+    <Message Text="Recreated test-results directory structure" Importance="High" />
 
     <!-- Delete watcher.pid if it exists -->
     <Delete Files="$(WatcherExePath)" Condition="Exists('$(WatcherExePath)')" />
