@@ -1,26 +1,25 @@
-using System.Diagnostics;
 using System.Text.Json;
 using FluentAssertions;
 using OpenTelWatcher.E2ETests.Helpers;
+using OpenTelWatcher.Tests.E2E;
 using Xunit;
 
-namespace OpenTelWatcher.E2ETests.CLI;
+namespace OpenTelWatcher.E2ETests;
 
 /// <summary>
 /// E2E tests for the 'check' CLI command.
 /// Tests the command's ability to detect error files and return appropriate exit codes.
 /// </summary>
-[Collection("Sequential")]
 public class CheckCommandTests : IAsyncLifetime
 {
     // Use centralized test constants for artifact paths
     // Directory cleanup handled by Directory.Build.targets before test run
     // Each test uses its own unique subdirectory to avoid interference
-    private const int TestPort = TestConstants.DefaultTestPort;
+    private const int TestPort = TestHelpers.DefaultTestPort;
 
     public ValueTask InitializeAsync()
     {
-        // Test output directory is created by TestConstants.GetTestOutputDir
+        // Test output directory is created by TestHelpers.GetTestOutputDir
         // and cleaned by Directory.Build.targets before tests run
         return ValueTask.CompletedTask;
     }
@@ -35,7 +34,7 @@ public class CheckCommandTests : IAsyncLifetime
     public async Task Check_ReturnsZero_WhenNoErrorFilesExist()
     {
         // Arrange - create normal telemetry files (no errors)
-        var testDir = TestConstants.GetTestOutputDir("check-command/no-errors");
+        var testDir = TestHelpers.GetTestOutputDir("check-command/no-errors");
         await File.WriteAllTextAsync(
             Path.Combine(testDir, "traces.20251116_143022_456.ndjson"),
             "{\"resourceSpans\":[]}\n",
@@ -57,7 +56,7 @@ public class CheckCommandTests : IAsyncLifetime
     public async Task Check_ReturnsOne_WhenErrorFilesPresent()
     {
         // Arrange - create error files
-        var testDir = TestConstants.GetTestOutputDir("check-command/with-errors");
+        var testDir = TestHelpers.GetTestOutputDir("check-command/with-errors");
         await File.WriteAllTextAsync(
             Path.Combine(testDir, "traces.20251116_143022_456.errors.ndjson"),
             "{\"resourceSpans\":[]}\n",
@@ -78,7 +77,7 @@ public class CheckCommandTests : IAsyncLifetime
     public async Task Check_WithVerboseFlag_ShowsErrorFileList()
     {
         // Arrange - create error files
-        var testDir = TestConstants.GetTestOutputDir("check-command/verbose-errors");
+        var testDir = TestHelpers.GetTestOutputDir("check-command/verbose-errors");
         var traceErrorFile = "traces.20251116_143022_456.errors.ndjson";
         var logErrorFile = "logs.20251116_143022_456.errors.ndjson";
 
@@ -104,7 +103,7 @@ public class CheckCommandTests : IAsyncLifetime
     public async Task Check_WithVerboseFlag_ShowsSuccessMessage_WhenNoErrors()
     {
         // Arrange - create normal files only
-        var testDir = TestConstants.GetTestOutputDir("check-command/verbose-no-errors");
+        var testDir = TestHelpers.GetTestOutputDir("check-command/verbose-no-errors");
         await File.WriteAllTextAsync(
             Path.Combine(testDir, "traces.20251116_143022_456.ndjson"),
             "{\"resourceSpans\":[]}\n",
@@ -123,7 +122,7 @@ public class CheckCommandTests : IAsyncLifetime
     public async Task Check_WithJsonFlag_ReturnsStructuredHealthData()
     {
         // Arrange - create error files
-        var testDir = TestConstants.GetTestOutputDir("check-command/json-errors");
+        var testDir = TestHelpers.GetTestOutputDir("check-command/json-errors");
         await File.WriteAllTextAsync(
             Path.Combine(testDir, "traces.20251116_143022_456.errors.ndjson"),
             "{\"resourceSpans\":[]}\n",
@@ -150,7 +149,7 @@ public class CheckCommandTests : IAsyncLifetime
     public async Task Check_WithJsonFlag_WhenNoErrors_ReturnsStructuredData()
     {
         // Arrange - no error files
-        var testDir = TestConstants.GetTestOutputDir("check-command/json-no-errors");
+        var testDir = TestHelpers.GetTestOutputDir("check-command/json-no-errors");
         await File.WriteAllTextAsync(
             Path.Combine(testDir, "traces.20251116_143022_456.ndjson"),
             "{\"resourceSpans\":[]}\n",
@@ -180,7 +179,7 @@ public class CheckCommandTests : IAsyncLifetime
         // (doesn't require the watcher instance to be running)
 
         // Arrange - create error file
-        var testDir = TestConstants.GetTestOutputDir("check-command/standalone");
+        var testDir = TestHelpers.GetTestOutputDir("check-command/standalone");
         await File.WriteAllTextAsync(
             Path.Combine(testDir, "traces.20251116_143022_456.errors.ndjson"),
             "{\"resourceSpans\":[]}\n",
@@ -197,7 +196,7 @@ public class CheckCommandTests : IAsyncLifetime
     public async Task Check_WithMixedFiles_DetectsOnlyErrorFiles()
     {
         // Arrange - mix of normal and error files
-        var testDir = TestConstants.GetTestOutputDir("check-command/mixed-files");
+        var testDir = TestHelpers.GetTestOutputDir("check-command/mixed-files");
         await File.WriteAllTextAsync(
             Path.Combine(testDir, "traces.20251116_143022_456.ndjson"),
             "{\"resourceSpans\":[]}\n",
@@ -225,48 +224,11 @@ public class CheckCommandTests : IAsyncLifetime
 
     // Helper Methods
 
-    private async Task<CommandResult> RunCheckCommand(string testDir, params string[] additionalArgs)
+    private static async Task<CommandResult> RunCheckCommand(string testDir, params string[] additionalArgs)
     {
         var args = new List<string> { "check", "--output-dir", testDir };
         args.AddRange(additionalArgs);
-
-        var projectPath = GetProjectPath();
-        var arguments = $"run --project {projectPath} -- {string.Join(" ", args)}";
-
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = "dotnet",
-            Arguments = arguments,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
-
-        using var process = Process.Start(startInfo)!;
-        var output = await process.StandardOutput.ReadToEndAsync();
-        var error = await process.StandardError.ReadToEndAsync();
-        await process.WaitForExitAsync();
-
-        return new CommandResult
-        {
-            ExitCode = process.ExitCode,
-            Output = output,
-            Error = error
-        };
-    }
-
-    private static string GetProjectPath()
-    {
-        // Use solution root to get absolute path to opentelwatcher project
-        var projectPath = Path.Combine(TestConstants.SolutionRoot, "opentelwatcher", "opentelwatcher.csproj");
-        return projectPath;
-    }
-
-    private record CommandResult
-    {
-        public int ExitCode { get; init; }
-        public string Output { get; init; } = string.Empty;
-        public string Error { get; init; } = string.Empty;
+        var commandArgs = string.Join(" ", args);
+        return await TestHelpers.RunCliCommandWithOutputAsync(commandArgs);
     }
 }

@@ -128,7 +128,7 @@ public abstract class OpenTelWatcherServerFixtureBase : IAsyncLifetime, IDisposa
     /// </summary>
     public static string FindSolutionRoot()
     {
-        return TestHelpers.FindSolutionRoot();
+        return TestHelpers.SolutionRoot;
     }
 
     /// <summary>
@@ -136,7 +136,7 @@ public abstract class OpenTelWatcherServerFixtureBase : IAsyncLifetime, IDisposa
     /// </summary>
     protected static (string fileName, string arguments, string solutionRoot) GetWatcherExecutableInfo(int port, bool useDaemonFlag = false)
     {
-        var solutionRoot = FindSolutionRoot();
+        var solutionRoot = TestHelpers.SolutionRoot;
         var binDir = Path.Combine(solutionRoot, "artifacts", "bin", "opentelwatcher", "Debug");
 
         // Determine the executable name based on the platform

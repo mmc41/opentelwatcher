@@ -38,4 +38,10 @@ public interface IOpenTelWatcherApiClient
     /// </summary>
     /// <returns>Clear response or null if request failed</returns>
     Task<ClearResponse?> ClearAsync();
+
+    /// <summary>
+    /// Get telemetry and file statistics from running instance
+    /// </summary>
+    /// <returns>Stats response or null if not running</returns>
+    Task<StatsResponse?> GetStatsAsync();
 }

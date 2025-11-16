@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Reflection;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Logging;
@@ -412,6 +413,54 @@ public class WebApplicationHost : IWebApplicationHost
         })
         .WithSummary("Get application information")
         .WithDescription("Returns version, health status, file statistics, and configuration details")
+        .Produces<object>(200)
+        .AddOpenApiOperationTransformer((operation, context, ct) => Task.CompletedTask);
+
+        // Stats endpoint - telemetry and file statistics
+        apiGroup.MapGet("/stats", (
+            ITelemetryStatistics telemetryStats,
+            IDiagnosticsCollector diagnostics) =>
+        {
+            var processStartTime = Process.GetCurrentProcess().StartTime;
+            var uptimeSeconds = (long)(DateTime.Now - processStartTime).TotalSeconds;
+
+            // Get all files for breakdown
+            var allFiles = diagnostics.GetFileInfo(null);
+            var traceFiles = allFiles.Where(f => f.Path.Contains("traces.", StringComparison.OrdinalIgnoreCase)).ToList();
+            var logFiles = allFiles.Where(f => f.Path.Contains("logs.", StringComparison.OrdinalIgnoreCase)).ToList();
+            var metricFiles = allFiles.Where(f => f.Path.Contains("metrics.", StringComparison.OrdinalIgnoreCase)).ToList();
+
+            return Results.Json(new
+            {
+                telemetry = new
+                {
+                    traces = new { requests = telemetryStats.TracesReceived },
+                    logs = new { requests = telemetryStats.LogsReceived },
+                    metrics = new { requests = telemetryStats.MetricsReceived }
+                },
+                files = new
+                {
+                    traces = new
+                    {
+                        count = traceFiles.Count,
+                        sizeBytes = traceFiles.Sum(f => f.SizeBytes)
+                    },
+                    logs = new
+                    {
+                        count = logFiles.Count,
+                        sizeBytes = logFiles.Sum(f => f.SizeBytes)
+                    },
+                    metrics = new
+                    {
+                        count = metricFiles.Count,
+                        sizeBytes = metricFiles.Sum(f => f.SizeBytes)
+                    }
+                },
+                uptimeSeconds = uptimeSeconds
+            });
+        })
+        .WithSummary("Get telemetry and file statistics")
+        .WithDescription("Returns telemetry request counts, file breakdown by type, and uptime")
         .Produces<object>(200)
         .AddOpenApiOperationTransformer((operation, context, ct) => Task.CompletedTask);
 

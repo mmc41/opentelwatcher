@@ -20,7 +20,7 @@ public class CliCommandExitCodeTests
 
     public CliCommandExitCodeTests()
     {
-        _solutionRoot = TestHelpers.FindSolutionRoot();
+        _solutionRoot = TestHelpers.SolutionRoot;
         _executablePath = TestHelpers.GetWatcherExecutablePath(_solutionRoot);
     }
 

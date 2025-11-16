@@ -2,6 +2,10 @@
 
 A minimal, file-based OpenTelemetry collector for local development and testing. Receives OTLP telemetry data over HTTP and persists it as NDJSON files for easy inspection by developers and AI tools.
 
+## About
+
+> Most of the project code has been developed in a few days as a Claude code LLM-driven development experiement with human-in-the-loop as architect/test manager/reviwer but not as a developer. An early version of github speckit was used for the initial core functionally, which it did surprisingly well except for one major hiccup. For subsequent changes and quality improvments, plain claude was code was used under human direction, usually in plan mode. The process used a considerable amount of reviews and rework instructions when the AI decided on a bad approach like f.x. using goto statements or duplicated code.
+
 ## Status
 
 [![build](https://github.com/mmc41/opentelwatcher/actions/workflows/build-validation.yml/badge.svg)](https://github.com/mmc41/opentelwatcher/actions/workflows/build-validation.yml)
@@ -27,7 +31,7 @@ OpenTelWatcher is a lightweight OTLP receiver designed for **development and tes
 - Single-file deployment with embedded web resources
 - Cross-platform: Windows, macOS, Linux
 - Zero external dependencies or cloud services
-- Comprehensive test suite (232 tests: 168 unit + 64 E2E)
+- Comprehensive test suite (274 tests: 178 unit + 96 E2E)
 
 **This is NOT a production collector.** It does not support:
 - gRPC protocol
@@ -316,6 +320,58 @@ Displays:
 - Telemetry statistics (file count and total size)
 - Configuration settings
 - Recent errors (if any)
+
+**Quick health status check:**
+```bash
+dotnet run --project opentelwatcher -- status
+```
+
+Provides a one-line summary of the watcher's health status. Useful for monitoring scripts and quick health checks.
+
+Output example:
+```
+✓ Healthy | 3 files (1.2 MB) | No errors
+```
+
+Exit codes:
+- `0` - Healthy (no error files detected)
+- `1` - Unhealthy (error files present)
+- `2` - Not running (no instance found)
+
+Options:
+- `--port <number>` - Port number to query (default: 4318)
+- `--json` - Output results in JSON format
+- `--silent` - Suppress all output except errors
+
+**Show telemetry statistics:**
+```bash
+dotnet run --project opentelwatcher -- stats
+```
+
+Displays detailed telemetry and file statistics:
+- Telemetry request counts (traces, logs, metrics received)
+- File breakdown by type (count and size for traces/logs/metrics)
+- Server uptime
+
+Output example:
+```
+Telemetry Statistics:
+  Traces received:       42 requests
+  Logs received:        156 requests
+  Metrics received:      23 requests
+
+Files: 5 (2.3 MB)
+  traces:    2 files (1.1 MB)
+  logs:      2 files (900 KB)
+  metrics:   1 file (300 KB)
+
+Uptime: 2h 34m 12s
+```
+
+Options:
+- `--port <number>` - Port number to query (default: 4318)
+- `--json` - Output results in JSON format
+- `--silent` - Suppress all output except errors
 
 **Clear telemetry data:**
 ```bash
@@ -1102,20 +1158,20 @@ dotnet test
 Expected output:
 ```
 Test Run Successful.
-Total tests: 92
-     Passed: 92
- Total time: 5.26 seconds (unit tests)
+Total tests: 178
+     Passed: 178
+ Total time: <300 ms (unit tests)
 
 Test Run Successful.
-Total tests: 38
-     Passed: 38
- Total time: 6.54 seconds (e2e tests)
+Total tests: 96
+     Passed: 96
+ Total time: ~3 minutes (e2e tests)
 ```
 
 **Test Summary:**
-- **Unit tests:** 168 tests covering configuration, serialization, services, CLI, utilities, and error detection
-- **E2E tests:** 64 tests covering OTLP endpoints, status page, API endpoints, CLI integration, and error file behavior
-- **Total:** 232 tests with 100% pass rate
+- **Unit tests:** 178 tests covering configuration, serialization, services, CLI, utilities, and error detection
+- **E2E tests:** 96 tests covering OTLP endpoints, status page, API endpoints, CLI integration, and error file behavior
+- **Total:** 274 tests with 100% pass rate
 
 **Note:** E2E tests respect the `OutputDirectory` setting from `appsettings.json` and will write test output to `opentelwatcher/telemetry-data/` during test execution.
 

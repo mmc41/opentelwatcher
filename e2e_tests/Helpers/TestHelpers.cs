@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using OpenTelWatcher.Configuration;
+using OpenTelWatcher.E2ETests.Helpers;
 
 namespace OpenTelWatcher.Tests.E2E;
 
@@ -12,20 +13,52 @@ public static class TestHelpers
 {
     /// <summary>
     /// Finds the solution root by looking for the project.root marker file.
+    /// Uses AppContext.BaseDirectory for more reliable test discovery.
     /// </summary>
     /// <returns>The absolute path to the solution root directory</returns>
-    public static string FindSolutionRoot()
+    private static string FindSolutionRoot()
     {
-        var currentDir = Directory.GetCurrentDirectory();
-        while (currentDir != null)
+        var directory = AppContext.BaseDirectory;
+        while (directory != null)
         {
-            if (File.Exists(Path.Combine(currentDir, "project.root")))
+            if (File.Exists(Path.Combine(directory, "project.root")))
             {
-                return currentDir;
+                return directory;
             }
-            currentDir = Directory.GetParent(currentDir)?.FullName;
+            directory = Directory.GetParent(directory)?.FullName;
         }
-        throw new InvalidOperationException("Could not find solution root (project.root marker file)");
+        throw new InvalidOperationException(
+            "Could not find solution root. Ensure project.root file exists at solution root.");
+    }
+
+    /// <summary>
+    /// Solution root directory (absolute path).
+    /// </summary>
+    public static readonly string SolutionRoot = FindSolutionRoot();
+
+    /// <summary>
+    /// Base directory for all E2E test artifacts (absolute path).
+    /// Located in artifacts/test-results/e2e/ per project structure.
+    /// </summary>
+    public static readonly string BaseTestOutputDir = Path.Combine(
+        SolutionRoot, "artifacts", "test-results", "e2e");
+
+    /// <summary>
+    /// Default test port for E2E tests to avoid conflicts with production instances.
+    /// </summary>
+    public const int DefaultTestPort = 5318;
+
+    /// <summary>
+    /// Gets a test-specific output directory within the E2E test artifacts folder.
+    /// Creates the directory if it doesn't exist.
+    /// </summary>
+    /// <param name="testName">Name of the test or test suite (e.g., "check-command")</param>
+    /// <returns>Full absolute path to the test output directory</returns>
+    public static string GetTestOutputDir(string testName)
+    {
+        var testDir = Path.Combine(BaseTestOutputDir, testName);
+        Directory.CreateDirectory(testDir); // Ensure directory exists
+        return testDir;
     }
 
     /// <summary>
@@ -95,6 +128,25 @@ public static class TestHelpers
         string solutionRoot)
     {
         var outputDir = Path.Combine(solutionRoot, "artifacts", "test-telemetry", $"port-{port}");
+        Directory.CreateDirectory(outputDir);
+
+        return await StartServerWithOutputDirAsync(executablePath, port, solutionRoot, outputDir);
+    }
+
+    /// <summary>
+    /// Starts a server on the specified port with a custom output directory and returns the process.
+    /// </summary>
+    /// <param name="executablePath">Path to the watcher executable</param>
+    /// <param name="port">Port number to use</param>
+    /// <param name="solutionRoot">Solution root directory</param>
+    /// <param name="outputDir">Output directory for telemetry data</param>
+    /// <returns>The started process</returns>
+    public static async Task<Process> StartServerWithOutputDirAsync(
+        string executablePath,
+        int port,
+        string solutionRoot,
+        string outputDir)
+    {
         Directory.CreateDirectory(outputDir);
 
         var startInfo = new ProcessStartInfo
@@ -297,5 +349,47 @@ public static class TestHelpers
         }
 
         return executablePath;
+    }
+
+    /// <summary>
+    /// Gets the path to the opentelwatcher.csproj project file.
+    /// </summary>
+    /// <returns>Absolute path to the project file</returns>
+    public static string GetProjectPath()
+    {
+        return Path.Combine(SolutionRoot, "opentelwatcher", "opentelwatcher.csproj");
+    }
+
+    /// <summary>
+    /// Runs a CLI command and returns the result with captured output.
+    /// </summary>
+    /// <param name="commandArgs">Command arguments (e.g., "check --output-dir ./data")</param>
+    /// <returns>CommandResult with exit code, stdout, and stderr</returns>
+    public static async Task<CommandResult> RunCliCommandWithOutputAsync(string commandArgs)
+    {
+        var projectPath = GetProjectPath();
+        var arguments = $"run --project {projectPath} -- {commandArgs}";
+
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = "dotnet",
+            Arguments = arguments,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+
+        using var process = Process.Start(startInfo)!;
+        var output = await process.StandardOutput.ReadToEndAsync();
+        var error = await process.StandardError.ReadToEndAsync();
+        await process.WaitForExitAsync();
+
+        return new CommandResult
+        {
+            ExitCode = process.ExitCode,
+            Output = output,
+            Error = error
+        };
     }
 }

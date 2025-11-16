@@ -154,3 +154,69 @@ public sealed record DiagnoseConfiguration
     [JsonPropertyName("outputDirectory")]
     public required string OutputDirectory { get; init; }
 }
+
+/// <summary>
+/// Response from /api/stats endpoint
+/// </summary>
+public sealed record StatsResponse
+{
+    [JsonPropertyName("telemetry")]
+    public required TelemetryStatistics Telemetry { get; init; }
+
+    [JsonPropertyName("files")]
+    public required FileBreakdown Files { get; init; }
+
+    [JsonPropertyName("uptimeSeconds")]
+    public required long UptimeSeconds { get; init; }
+}
+
+/// <summary>
+/// Telemetry request counts
+/// </summary>
+public sealed record TelemetryStatistics
+{
+    [JsonPropertyName("traces")]
+    public required TelemetryTypeStats Traces { get; init; }
+
+    [JsonPropertyName("logs")]
+    public required TelemetryTypeStats Logs { get; init; }
+
+    [JsonPropertyName("metrics")]
+    public required TelemetryTypeStats Metrics { get; init; }
+}
+
+/// <summary>
+/// Statistics for a specific telemetry type
+/// </summary>
+public sealed record TelemetryTypeStats
+{
+    [JsonPropertyName("requests")]
+    public required long Requests { get; init; }
+}
+
+/// <summary>
+/// File counts and sizes by telemetry type
+/// </summary>
+public sealed record FileBreakdown
+{
+    [JsonPropertyName("traces")]
+    public required FileTypeStats Traces { get; init; }
+
+    [JsonPropertyName("logs")]
+    public required FileTypeStats Logs { get; init; }
+
+    [JsonPropertyName("metrics")]
+    public required FileTypeStats Metrics { get; init; }
+}
+
+/// <summary>
+/// File statistics for a specific telemetry type
+/// </summary>
+public sealed record FileTypeStats
+{
+    [JsonPropertyName("count")]
+    public required int Count { get; init; }
+
+    [JsonPropertyName("sizeBytes")]
+    public required long SizeBytes { get; init; }
+}

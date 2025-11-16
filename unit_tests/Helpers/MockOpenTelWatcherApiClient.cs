@@ -35,6 +35,11 @@ public class MockOpenTelWatcherApiClient : IOpenTelWatcherApiClient
     public ClearResponse? ClearResponse { get; set; }
 
     /// <summary>
+    /// The stats response to return from GetStatsAsync().
+    /// </summary>
+    public StatsResponse? StatsResponse { get; set; }
+
+    /// <summary>
     /// Records all calls to GetInstanceStatusAsync with the CLI version parameter.
     /// </summary>
     public List<Version> GetInstanceStatusCalls { get; } = new();
@@ -63,5 +68,10 @@ public class MockOpenTelWatcherApiClient : IOpenTelWatcherApiClient
     public Task<ClearResponse?> ClearAsync()
     {
         return Task.FromResult(ClearResponse);
+    }
+
+    public Task<StatsResponse?> GetStatsAsync()
+    {
+        return Task.FromResult(StatsResponse);
     }
 }

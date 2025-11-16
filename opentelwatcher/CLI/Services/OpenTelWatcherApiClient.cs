@@ -178,4 +178,28 @@ public sealed class OpenTelWatcherApiClient : IOpenTelWatcherApiClient
             return null;
         }
     }
+
+    public async Task<StatsResponse?> GetStatsAsync()
+    {
+        try
+        {
+            var response = await _httpClient.GetAsync("/api/stats");
+            if (!response.IsSuccessStatusCode)
+                return null;
+
+            return await response.Content.ReadFromJsonAsync<StatsResponse>(JsonOptions);
+        }
+        catch (HttpRequestException ex)
+        {
+            // Connection refused - service not running
+            _logger.LogDebug(ex, "HTTP request failed (service likely not running)");
+            return null;
+        }
+        catch (TaskCanceledException ex)
+        {
+            // Timeout - service not running or not responding
+            _logger.LogDebug(ex, "Request timed out (service not responding)");
+            return null;
+        }
+    }
 }
