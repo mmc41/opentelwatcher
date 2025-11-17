@@ -16,8 +16,8 @@
         <Configuration>
           <!-- Output format: Cobertura XML -->
           <Format>cobertura</Format>
-          <!-- Include all assemblies by default -->
-          <IncludeDirectory>**</IncludeDirectory>
+          <!-- Include opentelwatcher bin directory for E2E test coverage -->
+          <IncludeDirectory>./artifacts/bin/opentelwatcher/Debug</IncludeDirectory>
           <!-- Exclude test assemblies from coverage -->
           <Exclude>[*tests]*</Exclude>
           <!-- Exclude auto-generated files -->
