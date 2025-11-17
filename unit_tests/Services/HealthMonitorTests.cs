@@ -4,7 +4,7 @@ using OpenTelWatcher.Services;
 using OpenTelWatcher.Services.Interfaces;
 using Xunit;
 
-namespace OpenTelWatcher.Tests.Services;
+namespace UnitTests.Services;
 
 public class HealthMonitorTests
 {

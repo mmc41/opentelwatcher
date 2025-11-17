@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using OpenTelWatcher.CLI.Models;
 using OpenTelWatcher.CLI.Services;
 using OpenTelWatcher.Utilities;
@@ -17,6 +18,7 @@ namespace OpenTelWatcher.CLI.Commands;
 /// - --verbose: Show detailed diagnostic information
 /// - --quiet: Suppress output, only exit code
 /// - --output-dir: Force filesystem mode (scan directory for errors)
+/// - --port: Specify port or auto-detect from PID file
 ///
 /// Exit codes:
 /// - 0: Healthy (no errors detected)
@@ -26,12 +28,32 @@ namespace OpenTelWatcher.CLI.Commands;
 public sealed class StatusCommand
 {
     private readonly IOpenTelWatcherApiClient _apiClient;
+    private readonly IPortResolver? _portResolver;
+    private readonly ILogger<StatusCommand>? _logger;
 
+    /// <summary>
+    /// Legacy constructor for backward compatibility.
+    /// </summary>
     public StatusCommand(IOpenTelWatcherApiClient apiClient)
     {
         _apiClient = apiClient;
+        _portResolver = null;
+        _logger = null;
     }
 
+    public StatusCommand(
+        IOpenTelWatcherApiClient apiClient,
+        IPortResolver portResolver,
+        ILogger<StatusCommand> logger)
+    {
+        _apiClient = apiClient ?? throw new ArgumentNullException(nameof(apiClient));
+        _portResolver = portResolver ?? throw new ArgumentNullException(nameof(portResolver));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    }
+
+    /// <summary>
+    /// Legacy method signature for backward compatibility.
+    /// </summary>
     public async Task<CommandResult> ExecuteAsync(
         bool errorsOnly = false,
         bool statsOnly = false,
@@ -40,52 +62,69 @@ public sealed class StatusCommand
         bool jsonOutput = false,
         string? outputDir = null)
     {
+        var options = new StatusOptions
+        {
+            Port = null,
+            ErrorsOnly = errorsOnly,
+            StatsOnly = statsOnly,
+            Verbose = verbose,
+            Quiet = quiet,
+            OutputDir = outputDir
+        };
+        return await ExecuteAsync(options, jsonOutput);
+    }
+
+    public async Task<CommandResult> ExecuteAsync(StatusOptions options, bool jsonOutput = false)
+    {
         var result = new Dictionary<string, object>();
         var cliVersion = Assembly.GetExecutingAssembly().GetName().Version ?? new Version(1, 0, 0);
 
         // Determine mode: API or Filesystem
         // If --output-dir is specified, force filesystem mode
-        // Otherwise, try API mode first, fallback to filesystem if no instance running
+        // Otherwise, try API mode first (with port resolution if needed)
 
-        if (!string.IsNullOrWhiteSpace(outputDir))
+        if (!string.IsNullOrWhiteSpace(options.OutputDir))
         {
             // Explicit filesystem mode
-            return await ExecuteFilesystemModeAsync(outputDir, quiet, jsonOutput);
+            return await ExecuteFilesystemModeAsync(options.OutputDir, options.Quiet, jsonOutput);
         }
 
-        // Try API mode first
+        // Note: Port resolution now happens in CliApplication before this command is invoked
+        // The HttpClient is already configured with the correct port
+
+        // Try API mode
         var status = await _apiClient.GetInstanceStatusAsync(cliVersion);
         if (!status.IsRunning)
         {
             // No instance running - this is an error for API mode
             // (User can use --output-dir to force filesystem mode)
-            return BuildNoInstanceRunningResult(result, quiet, jsonOutput);
+            return BuildNoInstanceRunningResult(result, options.Quiet, jsonOutput);
         }
 
         // API mode - get full status
         var info = await _apiClient.GetStatusAsync();
         if (info is null)
         {
-            return BuildFailedToRetrieveInfoResult(result, quiet, jsonOutput);
+            return BuildFailedToRetrieveInfoResult(result, options.Quiet, jsonOutput);
         }
 
         // Build result based on flags
-        if (errorsOnly)
+        if (options.ErrorsOnly)
         {
-            return BuildErrorsOnlyResult(result, status, info, verbose, quiet, jsonOutput);
+            return BuildErrorsOnlyResult(result, status, info, options.Verbose, options.Quiet, jsonOutput);
         }
-        else if (statsOnly)
+        else if (options.StatsOnly)
         {
-            return BuildStatsOnlyResult(result, info, quiet, jsonOutput);
+            return BuildStatsOnlyResult(result, info, options.Quiet, jsonOutput);
         }
-        else if (verbose)
+        else if (options.Verbose)
         {
-            return BuildVerboseResult(result, status, info, quiet, jsonOutput);
+            return BuildVerboseResult(result, status, info, options.Quiet, jsonOutput);
         }
         else
         {
             // Default: Full diagnostic information (InfoCommand style)
-            return BuildFullInfoResult(result, status, info, quiet, jsonOutput);
+            return BuildFullInfoResult(result, status, info, options.Quiet, jsonOutput);
         }
     }
 
@@ -96,19 +135,28 @@ public sealed class StatusCommand
     {
         var result = new Dictionary<string, object>();
 
-        // Check if directory exists
+        // Check if directory exists - this is a system error, not a "no errors" state
         if (!Directory.Exists(outputDir))
         {
-            // Non-existent directory means no error files
-            result["success"] = true;
-            result["mode"] = "filesystem";
-            result["hasErrors"] = false;
-            result["errorFileCount"] = 0;
-            result["errorFiles"] = Array.Empty<string>();
+            var message = $"Output directory does not exist: {outputDir}";
+
+            result["success"] = false;
+            result["error"] = "DirectoryNotFound";
+            result["message"] = message;
             result["outputDirectory"] = outputDir;
 
-            OutputFilesystemResult(result, jsonOutput, quiet, hasErrors: false);
-            return await Task.FromResult(CommandResult.Success("No errors"));
+            if (jsonOutput)
+            {
+                Console.WriteLine(JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));
+            }
+            else if (!quiet)
+            {
+                Console.WriteLine($"Error: {message}");
+                Console.WriteLine();
+                Console.WriteLine("Hint: Ensure the output directory exists before running status check.");
+            }
+
+            return await Task.FromResult(CommandResult.SystemError(message));
         }
 
         // Find all error files

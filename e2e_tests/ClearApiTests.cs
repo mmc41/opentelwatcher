@@ -1,36 +1,42 @@
-using OpenTelWatcher.E2ETests;
-using OpenTelWatcher.Tests.E2E;
 using System.Net.Http.Json;
 using System.Text.Json;
 using FluentAssertions;
+using Microsoft.Extensions.Logging;
 using OpenTelWatcher.CLI.Models;
 using Xunit;
 
-namespace E2ETests;
+namespace OpenTelWatcher.Tests.E2E;
 
 [Collection("Watcher Server")]
 public class ClearApiTests
 {
     private readonly OpenTelWatcherServerFixture _fixture;
+    private readonly ILogger<ClearApiTests> _logger;
 
     public ClearApiTests(OpenTelWatcherServerFixture fixture)
     {
         _fixture = fixture;
+        _logger = TestLoggerFactory.CreateLogger<ClearApiTests>();
     }
 
     [Fact]
     public async Task ClearEndpoint_WithNoFiles_ReturnsSuccessWithZeroDeleted()
     {
         // Arrange - First clear any existing files
+        _logger.LogInformation("Clearing any existing files");
         await _fixture.Client.PostAsync("/api/clear", null, TestContext.Current.CancellationToken);
 
         // Act - Call clear again
+        _logger.LogInformation("Calling clear endpoint again, expecting zero files deleted");
         var response = await _fixture.Client.PostAsync("/api/clear", null, TestContext.Current.CancellationToken);
 
         // Assert
         response.IsSuccessStatusCode.Should().BeTrue();
         var clearResponse = await response.Content.ReadFromJsonAsync<ClearResponse>(
             cancellationToken: TestContext.Current.CancellationToken);
+
+        _logger.LogInformation("Clear response: FilesDeleted={FilesDeleted}, Message={Message}",
+            clearResponse?.FilesDeleted, clearResponse?.Message);
 
         clearResponse.Should().NotBeNull();
         clearResponse!.Success.Should().BeTrue();
@@ -64,12 +70,17 @@ public class ClearApiTests
     public async Task ClearEndpoint_DeletesFilesAfterIngestion()
     {
         // Arrange - Get info to check current file count
+        _logger.LogInformation("Checking current file count");
         var infoBefore = await _fixture.Client.GetFromJsonAsync<StatusResponse>("/api/status",
             TestContext.Current.CancellationToken);
+
+        _logger.LogInformation("Files before: Count={Count}, TotalSizeBytes={Size}",
+            infoBefore!.Files.Count, infoBefore.Files.TotalSizeBytes);
 
         // Send some telemetry data if no files exist
         if (infoBefore!.Files.Count == 0)
         {
+            _logger.LogInformation("No files exist, sending minimal trace data");
             // Send minimal OTLP trace data (protobuf encoded)
             var traceData = new byte[] { 0x0A, 0x00 }; // Minimal valid protobuf
             await _fixture.Client.PostAsync("/v1/traces",
@@ -81,6 +92,7 @@ public class ClearApiTests
         }
 
         // Act - Clear files
+        _logger.LogInformation("Calling clear endpoint to delete files");
         var clearResponse = await _fixture.Client.PostAsync("/api/clear", null,
             TestContext.Current.CancellationToken);
 
@@ -89,6 +101,9 @@ public class ClearApiTests
         var result = await clearResponse.Content.ReadFromJsonAsync<ClearResponse>(
             cancellationToken: TestContext.Current.CancellationToken);
 
+        _logger.LogInformation("Clear result: FilesDeleted={FilesDeleted}, Success={Success}",
+            result?.FilesDeleted, result?.Success);
+
         result.Should().NotBeNull();
         result!.Success.Should().BeTrue();
         result.FilesDeleted.Should().BeGreaterThanOrEqualTo(0);
@@ -96,6 +111,9 @@ public class ClearApiTests
         // Verify files are actually deleted
         var infoAfter = await _fixture.Client.GetFromJsonAsync<StatusResponse>("/api/status",
             TestContext.Current.CancellationToken);
+
+        _logger.LogInformation("Files after: Count={Count}, TotalSizeBytes={Size}",
+            infoAfter!.Files.Count, infoAfter.Files.TotalSizeBytes);
 
         infoAfter!.Files.Count.Should().Be(0, "all files should be deleted after clear");
         infoAfter.Files.TotalSizeBytes.Should().Be(0);

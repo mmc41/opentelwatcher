@@ -81,7 +81,8 @@ public class IndexModel : PageModel
     private readonly IDiagnosticsCollector _diagnostics;
     private readonly ILogger<IndexModel> _logger;
     private readonly IConfiguration _configuration;
-    private static readonly DateTime _startTime = DateTime.UtcNow;
+    private readonly ITimeProvider _timeProvider;
+    private readonly DateTime _startTime;
 
     public HealthInfo HealthInfo { get; private set; } = null!;
     public TelemetryStatistics Statistics { get; private set; } = null!;
@@ -94,11 +95,14 @@ public class IndexModel : PageModel
     public IndexModel(
         IDiagnosticsCollector diagnostics,
         ILogger<IndexModel> logger,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        ITimeProvider timeProvider)
     {
         _diagnostics = diagnostics;
         _logger = logger;
         _configuration = configuration;
+        _timeProvider = timeProvider;
+        _startTime = timeProvider.UtcNow;
     }
 
     public void OnGet()
@@ -107,7 +111,7 @@ public class IndexModel : PageModel
         {
             // Populate HealthInfo
             var status = _diagnostics.GetHealthStatus();
-            var uptime = DateTime.UtcNow - _startTime;
+            var uptime = _timeProvider.UtcNow - _startTime;
 
             HealthInfo = new HealthInfo
             {
@@ -115,8 +119,8 @@ public class IndexModel : PageModel
                 StatusText = status == HealthStatus.Healthy ? "Healthy" : "Degraded",
                 Uptime = uptime,
                 UptimeFormatted = UptimeFormatter.FormatUptime(uptime),
-                LastUpdated = DateTime.UtcNow,
-                LastUpdatedFormatted = DateTime.UtcNow.ToString("o")
+                LastUpdated = _timeProvider.UtcNow,
+                LastUpdatedFormatted = _timeProvider.UtcNow.ToString("o")
             };
 
             // Populate Statistics
@@ -210,8 +214,8 @@ public class IndexModel : PageModel
                 StatusText = "Unknown",
                 Uptime = TimeSpan.Zero,
                 UptimeFormatted = "0s",
-                LastUpdated = DateTime.UtcNow,
-                LastUpdatedFormatted = DateTime.UtcNow.ToString("o")
+                LastUpdated = _timeProvider.UtcNow,
+                LastUpdatedFormatted = _timeProvider.UtcNow.ToString("o")
             };
 
             Statistics = new TelemetryStatistics

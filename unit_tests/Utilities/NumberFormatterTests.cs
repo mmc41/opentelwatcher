@@ -2,7 +2,7 @@ using OpenTelWatcher.Utilities;
 using FluentAssertions;
 using Xunit;
 
-namespace OpenTelWatcher.Tests.Utilities;
+namespace UnitTests.Utilities;
 
 public class NumberFormatterTests
 {

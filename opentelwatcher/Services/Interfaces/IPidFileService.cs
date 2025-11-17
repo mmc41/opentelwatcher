@@ -1,5 +1,3 @@
-using System.Diagnostics;
-
 namespace OpenTelWatcher.Services.Interfaces;
 
 /// <summary>
@@ -12,25 +10,35 @@ public sealed record PidEntry
     public required DateTime Timestamp { get; init; }
 
     /// <summary>
-    /// Checks if this entry represents a running process
+    /// Checks if this entry represents a running opentelwatcher process.
+    /// Validates both process existence and process identity to prevent false positives from PID recycling.
     /// </summary>
-    public bool IsRunning()
+    /// <param name="processProvider">The process provider to use for querying process information.</param>
+    /// <returns>True if the process is running and is an opentelwatcher process; false otherwise.</returns>
+    public bool IsRunning(IProcessProvider processProvider)
     {
-        try
-        {
-            var process = Process.GetProcessById(Pid);
-            return !process.HasExited;
-        }
-        catch (ArgumentException)
-        {
-            return false; // Process not found
-        }
+        var process = processProvider.GetProcessById(Pid);
+
+        if (process == null || process.HasExited)
+            return false;
+
+        // Validate it's actually an opentelwatcher process to prevent PID recycling false positives
+        var processName = process.ProcessName.ToLowerInvariant();
+
+        // Valid process names:
+        // - "opentelwatcher" or "watcher" (published executable)
+        // - "dotnet" (development mode running via dotnet run)
+        return processName.Contains("opentelwatcher") ||
+               processName.Contains("watcher") ||
+               processName.Contains("dotnet");
     }
 
     /// <summary>
-    /// Gets the age of this entry
+    /// Gets the age of this entry.
     /// </summary>
-    public TimeSpan Age => DateTime.UtcNow - Timestamp;
+    /// <param name="timeProvider">The time provider to use for getting the current time.</param>
+    /// <returns>The timespan between the entry timestamp and current time.</returns>
+    public TimeSpan GetAge(ITimeProvider timeProvider) => timeProvider.UtcNow - Timestamp;
 }
 
 /// <summary>

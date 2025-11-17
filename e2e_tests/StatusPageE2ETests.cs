@@ -1,17 +1,19 @@
 using FluentAssertions;
+using Microsoft.Extensions.Logging;
 using Xunit;
-using OpenTelWatcher.Tests.E2E;
 
-namespace OpenTelWatcher.E2ETests;
+namespace OpenTelWatcher.Tests.E2E;
 
 [Collection("Watcher Server")]
 public class StatusPageE2ETests
 {
     private readonly OpenTelWatcherServerFixture _fixture;
+    private readonly ILogger<StatusPageE2ETests> _logger;
 
     public StatusPageE2ETests(OpenTelWatcherServerFixture fixture)
     {
         _fixture = fixture;
+        _logger = TestLoggerFactory.CreateLogger<StatusPageE2ETests>();
     }
 
     [Fact]
@@ -50,8 +52,11 @@ public class StatusPageE2ETests
     public async Task StatusPage_DisplaysHealthStatus()
     {
         // Act
+        _logger.LogInformation("Testing status page health status display");
         var response = await _fixture.Client.GetAsync("/", TestContext.Current.CancellationToken);
         var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        _logger.LogDebug("Status page HTML length: {Length} bytes", html.Length);
 
         // Assert
         html.Should().MatchRegex("Health:.*?(Healthy|Degraded)");

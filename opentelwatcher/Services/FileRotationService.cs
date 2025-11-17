@@ -9,9 +9,15 @@ namespace OpenTelWatcher.Services;
 /// </summary>
 public class FileRotationService : IFileRotationService, IDisposable
 {
+    private readonly ITimeProvider _timeProvider;
     private readonly ConcurrentDictionary<string, string> _activeFilePaths = new();
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _rotationLocks = new();
     private bool _disposed = false;
+
+    public FileRotationService(ITimeProvider timeProvider)
+    {
+        _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
+    }
 
     /// <inheritdoc/>
     public bool ShouldRotate(string filePath, int maxFileSizeMB)
@@ -31,7 +37,7 @@ public class FileRotationService : IFileRotationService, IDisposable
     public string GenerateNewFilePath(string outputDirectory, string signal)
     {
         // Generate UTC timestamp with millisecond precision to prevent collisions: yyyyMMdd_HHmmss_fff
-        var timestamp = DateTime.UtcNow.ToString("yyyyMMdd_HHmmss_fff");
+        var timestamp = _timeProvider.UtcNow.ToString("yyyyMMdd_HHmmss_fff");
         var fileName = $"{signal}.{timestamp}.ndjson";
 
         return Path.Combine(outputDirectory, fileName);

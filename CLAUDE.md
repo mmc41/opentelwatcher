@@ -46,8 +46,10 @@ opentelwatcher/                     # Main production project
 │   │   ├── ApiModels.cs
 │   │   └── CommandModels.cs
 │   ├── Services/           # CLI services
-│   │   ├── IWatcherApiClient.cs
-│   │   └── WatcherApiClient.cs
+│   │   ├── IOpenTelWatcherApiClient.cs
+│   │   ├── OpenTelWatcherApiClient.cs
+│   │   ├── IPortResolver.cs         # Port auto-detection interface
+│   │   └── PortResolver.cs          # Port resolution from PID file
 │   └── CliApplication.cs   # CLI orchestrator (System.CommandLine 2.0)
 ├── web/                     # Web content (002-status-page)
 │   ├── Index.cshtml        # Status page Razor view
@@ -93,6 +95,17 @@ Directory.Build.targets     # MSBuild targets (auto-generates coverage summary, 
 NLog.config                 # NLog logging configuration (shared across all projects)
 project.root                # Solution root marker for E2E test discovery
 ```
+
+## Testing
+
+For detailed testing guidelines, best practices, and patterns, see **[TESTING.md](TESTING.md)**.
+
+**Quick Reference:**
+- Extend `FileBasedTestBase` for tests needing temp directories
+- Use `TestBuilders` for creating test data
+- Use `TestConstants` instead of magic numbers
+- Always use `TestContext.Current.CancellationToken` for async operations
+- Avoid inline try/finally cleanup blocks
 
 ## Commands
 
@@ -145,11 +158,17 @@ dotnet run --project opentelwatcher -- start --port 4318 --output-dir ./data
 # Start in background mode (non-blocking)
 dotnet run --project opentelwatcher -- start --daemon --port 4318
 
-# Stop the running instance
+# Stop the running instance (auto-detects port from PID file)
 dotnet run --project opentelwatcher -- stop
+
+# Stop instance on specific port
+dotnet run --project opentelwatcher -- stop --port 4318
 
 # View instance status (health, version, config, stats)
 dotnet run --project opentelwatcher -- status
+
+# View status for specific port
+dotnet run --project opentelwatcher -- status --port 4318
 
 # View only error information
 dotnet run --project opentelwatcher -- status --errors-only
@@ -172,8 +191,11 @@ dotnet run --project opentelwatcher -- list
 # List only error files
 dotnet run --project opentelwatcher -- list --errors-only
 
-# Clear telemetry data files
+# Clear telemetry data files (auto-detects port from PID file)
 dotnet run --project opentelwatcher -- clear
+
+# Clear from specific port instance
+dotnet run --project opentelwatcher -- clear --port 4318
 
 # Clear with options (standalone mode)
 dotnet run --project opentelwatcher -- clear --output-dir ./telemetry-data --verbose
@@ -190,7 +212,11 @@ dotnet run --project opentelwatcher -- --help
   - `--log-level <level>` - Log level (default: Information)
   - `--daemon` - Run in background (non-blocking mode)
 - `opentelwatcher stop` - Stop the running instance
+  - `--port <number>` - Port number (auto-detected from PID file if omitted)
+  - `--silent` - Suppress all output except errors
+  - `--json` - Output in JSON format
 - `opentelwatcher status` - Unified status/info/check command (dual-mode: API + filesystem)
+  - `--port <number>` - Port number (auto-detected from PID file if omitted)
   - `--errors-only` - Show only error information
   - `--stats-only` - Show only telemetry statistics
   - `--verbose` - Show detailed diagnostic information
@@ -203,6 +229,7 @@ dotnet run --project opentelwatcher -- --help
   - `--errors-only` - List only error files
   - `--json` - Output in JSON format
 - `opentelwatcher clear` - Clear telemetry data files
+  - `--port <number>` - Port number (auto-detected from PID file if omitted)
   - `--output-dir, -o <path>` - Directory to clear (validated against instance when running)
   - `--verbose` - Show detailed operation information
   - `--silent` - Suppress all output except errors
@@ -225,6 +252,70 @@ dotnet run --project opentelwatcher -- --help
 - HTTP client communication with running instance via `/api/status`, `/api/stop`, `/api/list`, `/api/clear`
 - Exit codes: 0 (success), 1 (user error), 2 (system error)
 - Command pattern with dependency injection
+
+**Port Auto-Resolution:**
+- Commands that interact with the API (`stop`, `status`, `clear`) support automatic port detection
+- When `--port` is omitted, the `PortResolver` service consults the PID file (`opentelwatcher.pid`)
+- **Behavior**:
+  - If exactly one instance is running: Uses that instance's port automatically
+  - If multiple instances are running: Returns error "Multiple instances running on ports: X, Y, Z. Please specify --port"
+  - If no instances are running: Returns error "No running instances found. Please specify --port or start an instance"
+  - Stale PID entries (dead processes) are automatically filtered out
+- **Benefits**:
+  - Simplified workflow when running single instance (default case)
+  - Explicit port required for multiple instances (prevents accidental operations)
+  - Clear error messages guide users to correct usage
+- **Implementation**:
+  - `IPortResolver` service with dependency injection
+  - Uses `IPidFileService` to read PID file entries
+  - Uses `IProcessProvider` to verify process is alive
+  - Structured logging for debugging port resolution
+
+**Troubleshooting Port Resolution:**
+
+Common errors and solutions:
+
+1. **"No running instances found"**
+   - **Cause**: No `opentelwatcher.pid` file exists OR all PIDs in file are for terminated processes
+   - **Solution**:
+     - Start an instance: `opentelwatcher start --port 4318`
+     - Or specify port explicitly: `opentelwatcher <command> --port 4318`
+   - **Check**: Verify PID file exists in working directory: `ls opentelwatcher.pid`
+
+2. **"Multiple instances running on ports: X, Y, Z"**
+   - **Cause**: Multiple instances are running simultaneously on different ports
+   - **Solution**: Specify which instance to target: `opentelwatcher <command> --port X`
+   - **List all instances**: Check PID file content to see all registered instances
+   - **Stop all**: Run `opentelwatcher stop --port X` for each port
+
+3. **PID file exists but command says "No running instances found"**
+   - **Cause**: All processes in PID file have exited, but file wasn't cleaned up
+   - **Solution**: Delete stale PID file: `rm opentelwatcher.pid`
+   - **Prevention**: Use graceful shutdown (`opentelwatcher stop`) instead of force kill
+
+4. **Port resolution works intermittently**
+   - **Cause**: Race condition during instance startup/shutdown
+   - **Solution**: Wait a few seconds after start/stop before running next command
+   - **Workaround**: Use explicit `--port` for reliability in scripts
+
+5. **"Permission denied" when accessing PID file**
+   - **Cause**: File permissions issue or file locked by another process
+   - **Solution**: Check file permissions: `ls -l opentelwatcher.pid`
+   - **Fix**: Adjust permissions or run command with appropriate user
+
+**Debugging Port Resolution:**
+
+Enable verbose logging to see port resolution details:
+
+```bash
+# Set log level to Debug (shows port resolution logs)
+export DOTNET_ENVIRONMENT=Development
+
+# Run command - will show detailed port resolution logs
+opentelwatcher stop --verbose
+```
+
+Check application logs in `artifacts/logs/opentelwatcher-all-{date}.log` for port resolution diagnostics.
 
 **Status Command Dual-Mode Behavior:**
 - **Instance Running (API Mode)**:
@@ -448,3 +539,8 @@ args → Program.cs (try/catch/finally wrapper)
 - Status page forces 127.0.0.1 in all displayed endpoint URLs
 - HTTP clients use 127.0.0.1 for API communication
 - Avoids IPv4/IPv6 ambiguity and ensures consistent behavior
+
+**Other:**
+- Do not mock ILogger or ILoggerFactory. Do not use NullLogger. Also do not use NLog api directly except from configuration.
+- When the user finds a bug or a review finds a bug (outside the normal process of adding a feature) do  first try to reproduce it with a unit or E2E test before fixing the bug.
+- All code and build/test infrastructure must be cross platform so it works on windows, mac and linux.

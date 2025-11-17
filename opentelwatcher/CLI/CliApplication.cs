@@ -9,6 +9,7 @@ using OpenTelWatcher.Hosting;
 using OpenTelWatcher.Services;
 using OpenTelWatcher.Services.Interfaces;
 using CliLogLevel = OpenTelWatcher.CLI.Models.LogLevel;
+using static OpenTelWatcher.Configuration.DefaultPorts;
 
 namespace OpenTelWatcher.CLI;
 
@@ -19,6 +20,13 @@ namespace OpenTelWatcher.CLI;
 /// </summary>
 public sealed class CliApplication
 {
+    private readonly IEnvironment _environment;
+
+    public CliApplication(IEnvironment environment)
+    {
+        _environment = environment ?? throw new ArgumentNullException(nameof(environment));
+    }
+
     public Task<int> RunAsync(string[] args)
     {
         var rootCommand = BuildRootCommand();
@@ -65,10 +73,14 @@ public sealed class CliApplication
     /// </summary>
     private string GetDefaultOutputDirectory()
     {
+        var environmentName = _environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT")
+                           ?? _environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")
+                           ?? "Production";
+
         var configuration = new ConfigurationBuilder()
-            .SetBasePath(Directory.GetCurrentDirectory())
+            .SetBasePath(_environment.CurrentDirectory)
             .AddJsonFile("appsettings.json", optional: true)
-            .AddJsonFile($"appsettings.{Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT") ?? Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production"}.json", optional: true)
+            .AddJsonFile($"appsettings.{environmentName}.json", optional: true)
             .Build();
 
         return configuration["OpenTelWatcher:OutputDirectory"] ?? "./telemetry-data";
@@ -83,7 +95,7 @@ public sealed class CliApplication
         var portOption = new Option<int>("--port")
         {
             Description = "Port number for the OTLP receiver",
-            DefaultValueFactory = _ => 4318
+            DefaultValueFactory = _ => Otlp
         };
 
         portOption.Validators.Add(result =>
@@ -210,6 +222,12 @@ public sealed class CliApplication
 
     private Command BuildStopCommand()
     {
+        var portOption = new Option<int?>("--port")
+        {
+            Description = "Port number (auto-detected if single instance running)",
+            DefaultValueFactory = _ => null
+        };
+
         var silentOption = new Option<bool>("--silent")
         {
             Description = "Suppress all console output except errors",
@@ -224,11 +242,14 @@ public sealed class CliApplication
 
         var stopCommand = new Command("stop", "Stop the running OpenTelWatcher instance\n\n" +
             "Sends shutdown request to the running instance via HTTP API.\n" +
+            "Port is auto-detected from PID file when a single instance is running.\n" +
             "Alias: shutdown\n\n" +
             "Options:\n" +
+            "  --port <number>          Port number (auto-detected if omitted)\n" +
             "  --silent                 Suppress all output except errors\n" +
             "  --json                   Output results in JSON format")
         {
+            portOption,
             silentOption,
             jsonOption
         };
@@ -236,11 +257,20 @@ public sealed class CliApplication
 
         stopCommand.SetAction(parseResult =>
         {
+            var port = parseResult.GetValue(portOption);
             var silent = parseResult.GetValue(silentOption);
             var json = parseResult.GetValue(jsonOption);
-            var services = BuildServiceProvider(4318);
+
+            // Resolve port (auto-detect from PID file if not specified)
+            var (resolvedPort, shouldContinue) = ResolvePortForCommand(port, silent, json);
+            if (!shouldContinue)
+                return 1; // Error already reported to user
+
+            var services = BuildServiceProvider(resolvedPort);
             var command = services.GetRequiredService<StopCommand>();
-            var result = command.ExecuteAsync(silent, json).GetAwaiter().GetResult();
+
+            var options = new CommandOptions { Port = port, Silent = silent };
+            var result = command.ExecuteAsync(options, json).GetAwaiter().GetResult();
 
             // Command handles its own console output
             return result.ExitCode;
@@ -251,10 +281,10 @@ public sealed class CliApplication
 
     private Command BuildStatusCommand()
     {
-        var portOption = new Option<int>("--port")
+        var portOption = new Option<int?>("--port")
         {
-            Description = "Port number to query (default: 4318)",
-            DefaultValueFactory = _ => 4318
+            Description = "Port number (auto-detected if single instance running)",
+            DefaultValueFactory = _ => null
         };
 
         var errorsOnlyOption = new Option<bool>("--errors-only")
@@ -336,16 +366,34 @@ public sealed class CliApplication
             var json = parseResult.GetValue(jsonOption);
             var outputDir = parseResult.GetValue(outputDirOption);
 
-            var services = BuildServiceProvider(port);
+            // Resolve port (auto-detect from PID file if not specified), but only if not in standalone mode
+            int resolvedPort;
+            if (outputDir == null)
+            {
+                var (resolvedPortValue, shouldContinue) = ResolvePortForCommand(port, quiet, json);
+                if (!shouldContinue)
+                    return 1; // Error already reported to user
+                resolvedPort = resolvedPortValue;
+            }
+            else
+            {
+                // Standalone mode - use default port (won't be used)
+                resolvedPort = Otlp;
+            }
+
+            var services = BuildServiceProvider(resolvedPort);
             var command = services.GetRequiredService<StatusCommand>();
-            var result = command.ExecuteAsync(
-                errorsOnly: errorsOnly,
-                statsOnly: statsOnly,
-                verbose: verbose,
-                quiet: quiet,
-                jsonOutput: json,
-                outputDir: outputDir
-            ).GetAwaiter().GetResult();
+
+            var options = new StatusOptions
+            {
+                Port = port,
+                ErrorsOnly = errorsOnly,
+                StatsOnly = statsOnly,
+                Verbose = verbose,
+                Quiet = quiet,
+                OutputDir = outputDir
+            };
+            var result = command.ExecuteAsync(options, json).GetAwaiter().GetResult();
 
             // Command handles its own console output
             return result.ExitCode;
@@ -358,6 +406,12 @@ public sealed class CliApplication
     {
         // Get default output directory from configuration (for standalone mode)
         var defaultOutputDir = GetDefaultOutputDirectory();
+
+        var portOption = new Option<int?>("--port")
+        {
+            Description = "Port number (auto-detected if single instance running)",
+            DefaultValueFactory = _ => null
+        };
 
         var outputDirOption = new Option<string?>("--output-dir")
         {
@@ -390,11 +444,13 @@ public sealed class CliApplication
             "  - If --output-dir is omitted, uses the instance's configured directory\n" +
             "If no instance running: Clears files directly from specified directory\n\n" +
             "Options:\n" +
+            "  --port <number>          Port number (auto-detected if single instance running)\n" +
             "  --output-dir, -o <path>  Directory to clear (validated against instance when running)\n" +
             "  --silent                 Suppress all output except errors (overrides --verbose)\n" +
             "  --verbose                Show detailed operation information\n" +
             "  --json                   Output results in JSON format")
         {
+            portOption,
             outputDirOption,
             silentOption,
             verboseOption,
@@ -403,11 +459,17 @@ public sealed class CliApplication
 
         clearCommand.SetAction(parseResult =>
         {
+            var port = parseResult.GetValue(portOption);
             var outputDir = parseResult.GetValue(outputDirOption);
             var silent = parseResult.GetValue(silentOption);
             var verbose = parseResult.GetValue(verboseOption);
             var json = parseResult.GetValue(jsonOption);
-            var services = BuildServiceProvider(4318);
+
+            // Resolve port (auto-detect from PID file if not specified)
+            // Allow fallback for clear command (standalone mode)
+            var (resolvedPort, _) = ResolvePortForCommand(port, silent, json, allowFallback: true);
+
+            var services = BuildServiceProvider(resolvedPort);
             var command = services.GetRequiredService<ClearCommand>();
             var result = command.ExecuteAsync(outputDir, defaultOutputDir, verbose, silent, json).GetAwaiter().GetResult();
 
@@ -489,6 +551,60 @@ public sealed class CliApplication
         return listCommand;
     }
 
+    /// <summary>
+    /// Resolves the port to use for a command. If explicit port is provided, returns it.
+    /// Otherwise, attempts to auto-resolve from PID file.
+    /// </summary>
+    /// <param name="explicitPort">Explicitly provided port, or null for auto-resolution</param>
+    /// <param name="silent">Whether to suppress console output on error</param>
+    /// <param name="jsonOutput">Whether to output errors in JSON format</param>
+    /// <param name="allowFallback">Whether to fallback to default port on resolution failure (for standalone modes)</param>
+    /// <returns>Tuple of (resolvedPort, shouldContinue). shouldContinue=false means an error was already reported.</returns>
+    private (int port, bool shouldContinue) ResolvePortForCommand(
+        int? explicitPort,
+        bool silent = false,
+        bool jsonOutput = false,
+        bool allowFallback = false)
+    {
+        // If explicit port provided, use it
+        if (explicitPort.HasValue)
+            return (explicitPort.Value, true);
+
+        // Attempt auto-resolution from PID file
+        var tempServices = BuildServiceProvider(Otlp);
+        var portResolver = tempServices.GetRequiredService<IPortResolver>();
+
+        try
+        {
+            var resolvedPort = portResolver.ResolvePort(null);
+            return (resolvedPort, true);
+        }
+        catch (InvalidOperationException ex)
+        {
+            // Auto-resolution failed
+            if (allowFallback)
+            {
+                // Fallback to default port for standalone modes
+                return (Otlp, true);
+            }
+
+            // Report error to user
+            if (!silent && !jsonOutput)
+            {
+                Console.WriteLine($"Error: {ex.Message}");
+            }
+            else if (jsonOutput)
+            {
+                Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    success = false,
+                    error = ex.Message
+                }));
+            }
+            return (Otlp, false); // Return default port but signal not to continue
+        }
+    }
+
     private IServiceProvider BuildServiceProvider(int port)
     {
         var services = new ServiceCollection();
@@ -501,11 +617,22 @@ public sealed class CliApplication
             client.Timeout = TimeSpan.FromSeconds(ApiConstants.Timeouts.ApiRequestSeconds);
         });
 
+        // System abstraction services (for testability)
+        services.AddSingleton<IEnvironment, EnvironmentAdapter>();
+        services.AddSingleton<IProcessProvider, ProcessProvider>();
+        services.AddSingleton<ITimeProvider, SystemTimeProvider>();
+
         // Web application host (production implementation)
         services.AddSingleton<IWebApplicationHost, WebApplicationHost>();
 
         // PID file service
         services.AddSingleton<IPidFileService, PidFileService>();
+
+        // Port resolution service
+        services.AddSingleton<IPortResolver, PortResolver>();
+
+        // Logging
+        services.AddLogging();
 
         // Command handlers
         services.AddTransient<StartCommand>();

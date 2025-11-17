@@ -1,4 +1,4 @@
-namespace OpenTelWatcher.E2ETests.Helpers;
+namespace OpenTelWatcher.Tests.E2E;
 
 /// <summary>
 /// Result of running a CLI command with captured output.

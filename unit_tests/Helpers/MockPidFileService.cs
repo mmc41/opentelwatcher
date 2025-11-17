@@ -7,6 +7,8 @@ namespace UnitTests.Helpers;
 /// </summary>
 public class MockPidFileService : IPidFileService
 {
+    private readonly IProcessProvider _processProvider;
+
     public List<PidEntry> Entries { get; set; } = new();
     public int RegisterCalls { get; private set; }
     public int UnregisterCalls { get; private set; }
@@ -14,6 +16,11 @@ public class MockPidFileService : IPidFileService
     public int CleanedCount { get; set; }
 
     public string PidFilePath => "/mock/pid/file.pid";
+
+    public MockPidFileService(IProcessProvider processProvider)
+    {
+        _processProvider = processProvider ?? throw new ArgumentNullException(nameof(processProvider));
+    }
 
     public void Register(int port)
     {
@@ -46,7 +53,7 @@ public class MockPidFileService : IPidFileService
     public int CleanStaleEntries()
     {
         CleanStaleEntriesCalls++;
-        var removed = Entries.RemoveAll(e => !e.IsRunning());
+        var removed = Entries.RemoveAll(e => !e.IsRunning(_processProvider));
         return CleanedCount > 0 ? CleanedCount : removed;
     }
 }

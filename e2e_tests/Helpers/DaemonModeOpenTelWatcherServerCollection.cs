@@ -1,6 +1,4 @@
-using OpenTelWatcher.Tests.E2E;
-
-namespace E2ETests;
+namespace OpenTelWatcher.Tests.E2E;
 
 /// <summary>
 /// xUnit collection definition for daemon mode E2E tests.

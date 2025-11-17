@@ -1,4 +1,4 @@
-namespace OpenTelWatcher.UnitTests.Helpers;
+namespace UnitTests.Helpers;
 
 /// <summary>
 /// Helper utilities for unit tests.

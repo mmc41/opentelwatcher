@@ -20,7 +20,7 @@ public class OpenTelWatcherApiClientTests
         });
 
         var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:4318") };
-        var client = new OpenTelWatcherApiClient(httpClient, TestLoggerFactory.CreateLogger<OpenTelWatcherApiClient>());
+        var client = new OpenTelWatcherApiClient(httpClient, TestLoggerFactory.CreateLogger<OpenTelWatcherApiClient>(), new MockTimeProvider());
 
         // Act
         var status = await client.GetInstanceStatusAsync(new Version(1, 0, 0));
@@ -72,7 +72,7 @@ public class OpenTelWatcherApiClientTests
         });
 
         var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:4318") };
-        var client = new OpenTelWatcherApiClient(httpClient, TestLoggerFactory.CreateLogger<OpenTelWatcherApiClient>());
+        var client = new OpenTelWatcherApiClient(httpClient, TestLoggerFactory.CreateLogger<OpenTelWatcherApiClient>(), new MockTimeProvider());
 
         // Act
         var status = await client.GetInstanceStatusAsync(new Version(1, 0, 0));
@@ -126,7 +126,7 @@ public class OpenTelWatcherApiClientTests
         });
 
         var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:4318") };
-        var client = new OpenTelWatcherApiClient(httpClient, TestLoggerFactory.CreateLogger<OpenTelWatcherApiClient>());
+        var client = new OpenTelWatcherApiClient(httpClient, TestLoggerFactory.CreateLogger<OpenTelWatcherApiClient>(), new MockTimeProvider());
 
         // Act
         var status = await client.GetInstanceStatusAsync(new Version(1, 0, 0));
@@ -179,7 +179,7 @@ public class OpenTelWatcherApiClientTests
         });
 
         var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:4318") };
-        var client = new OpenTelWatcherApiClient(httpClient, TestLoggerFactory.CreateLogger<OpenTelWatcherApiClient>());
+        var client = new OpenTelWatcherApiClient(httpClient, TestLoggerFactory.CreateLogger<OpenTelWatcherApiClient>(), new MockTimeProvider());
 
         // Act
         var status = await client.GetInstanceStatusAsync(new Version(1, 0, 0));

@@ -2,6 +2,7 @@ using FluentAssertions;
 using OpenTelWatcher.CLI.Commands;
 using OpenTelWatcher.CLI.Models;
 using OpenTelWatcher.Hosting;
+using OpenTelWatcher.Services.Interfaces;
 using UnitTests.Helpers;
 using UnitTests.Mocks;
 
@@ -13,29 +14,56 @@ namespace UnitTests.CLI.Commands;
 /// </summary>
 public class StartCommandTests
 {
+    private readonly MockOpenTelWatcherApiClient _mockApiClient;
+    private readonly MockWebApplicationHost _mockWebHost;
+    private readonly MockProcessProvider _mockProcessProvider;
+    private readonly MockTimeProvider _mockTimeProvider;
+    private readonly MockPidFileService _mockPidFileService;
+
+    public StartCommandTests()
+    {
+        // Create common mocks used by most tests
+        _mockApiClient = new MockOpenTelWatcherApiClient();
+        _mockWebHost = new MockWebApplicationHost();
+        _mockProcessProvider = new MockProcessProvider();
+        _mockTimeProvider = new MockTimeProvider();
+        _mockPidFileService = new MockPidFileService(_mockProcessProvider);
+    }
+
+    private StartCommand CreateCommand()
+    {
+        return new StartCommand(
+            _mockApiClient,
+            _mockWebHost,
+            _mockPidFileService,
+            _mockProcessProvider,
+            _mockTimeProvider,
+            TestLoggerFactory.CreateLogger<StartCommand>());
+    }
+
     [Fact]
     public async Task ExecuteAsync_WhenInstanceAlreadyRunning_ReturnsUserError()
     {
         // Arrange
-        var mockApiClient = new MockOpenTelWatcherApiClient
+        _mockApiClient.InstanceStatus = new InstanceStatus
         {
-            InstanceStatus = new InstanceStatus
+            IsRunning = true,
+            IsCompatible = true,
+            Version = new VersionResponse
             {
-                IsRunning = true,
-                IsCompatible = true,
-                Version = new VersionResponse
+                Application = "OpenTelWatcher",
+                Version = TestConstants.Versions.VersionString,
+                VersionComponents = new VersionComponents
                 {
-                    Application = "OpenTelWatcher",
-                    Version = "1.0.0",
-                    VersionComponents = new VersionComponents { Major = 1, Minor = 0, Patch = 0 },
-                    ProcessId = 1234
-                }
+                    Major = TestConstants.Versions.MajorVersion,
+                    Minor = TestConstants.Versions.MinorVersion,
+                    Patch = TestConstants.Versions.PatchVersion
+                },
+                ProcessId = TestConstants.ProcessIds.DefaultTestPid
             }
         };
-        var mockWebHost = new MockWebApplicationHost();
-        var mockPidFileService = new MockPidFileService();
-        var command = new StartCommand(mockApiClient, mockWebHost, mockPidFileService, TestLoggerFactory.CreateLogger<StartCommand>());
-        var options = new CommandOptions { Port = 4318 };
+        var command = CreateCommand();
+        var options = new CommandOptions { Port = TestConstants.Network.DefaultPort };
 
         // Act
         var result = await command.ExecuteAsync(options);
@@ -43,34 +71,34 @@ public class StartCommandTests
         // Assert
         result.ExitCode.Should().Be(1); // User error
         result.Message.Should().Be("Instance already running");
-        mockWebHost.RunCalls.Should().BeEmpty(); // Should NOT start server
-        mockApiClient.GetInstanceStatusCalls.Should().HaveCount(1);
+        _mockWebHost.RunCalls.Should().BeEmpty(); // Should NOT start server
+        _mockApiClient.GetInstanceStatusCalls.Should().HaveCount(1);
     }
 
     [Fact]
     public async Task ExecuteAsync_WhenIncompatibleInstanceRunning_ReturnsSystemError()
     {
         // Arrange
-        var mockApiClient = new MockOpenTelWatcherApiClient
+        _mockApiClient.InstanceStatus = new InstanceStatus
         {
-            InstanceStatus = new InstanceStatus
+            IsRunning = true,
+            IsCompatible = false,
+            IncompatibilityReason = "Version mismatch: CLI is 2.0.0, server is 1.0.0",
+            Version = new VersionResponse
             {
-                IsRunning = true,
-                IsCompatible = false,
-                IncompatibilityReason = "Version mismatch: CLI is 2.0.0, server is 1.0.0",
-                Version = new VersionResponse
+                Application = "OpenTelWatcher",
+                Version = TestConstants.Versions.VersionString,
+                VersionComponents = new VersionComponents
                 {
-                    Application = "OpenTelWatcher",
-                    Version = "1.0.0",
-                    VersionComponents = new VersionComponents { Major = 1, Minor = 0, Patch = 0 },
-                    ProcessId = 1234
-                }
+                    Major = TestConstants.Versions.MajorVersion,
+                    Minor = TestConstants.Versions.MinorVersion,
+                    Patch = TestConstants.Versions.PatchVersion
+                },
+                ProcessId = TestConstants.ProcessIds.DefaultTestPid
             }
         };
-        var mockWebHost = new MockWebApplicationHost();
-        var mockPidFileService = new MockPidFileService();
-        var command = new StartCommand(mockApiClient, mockWebHost, mockPidFileService, TestLoggerFactory.CreateLogger<StartCommand>());
-        var options = new CommandOptions { Port = 4318 };
+        var command = CreateCommand();
+        var options = new CommandOptions { Port = TestConstants.Network.DefaultPort };
 
         // Act
         var result = await command.ExecuteAsync(options);
@@ -78,27 +106,20 @@ public class StartCommandTests
         // Assert
         result.ExitCode.Should().Be(2); // System error
         result.Message.Should().Be("Incompatible instance detected");
-        mockWebHost.RunCalls.Should().BeEmpty(); // Should NOT start server
+        _mockWebHost.RunCalls.Should().BeEmpty(); // Should NOT start server
     }
 
     [Fact]
     public async Task ExecuteAsync_WhenValidationFails_ReturnsUserError()
     {
         // Arrange
-        var mockApiClient = new MockOpenTelWatcherApiClient
+        _mockApiClient.InstanceStatus = new InstanceStatus { IsRunning = false };
+        _mockWebHost.ValidationResultToReturn = new ValidationResult
         {
-            InstanceStatus = new InstanceStatus { IsRunning = false }
+            IsValid = false,
+            Errors = new List<string> { "Port must be between 1 and 65535" }
         };
-        var mockWebHost = new MockWebApplicationHost
-        {
-            ValidationResultToReturn = new ValidationResult
-            {
-                IsValid = false,
-                Errors = new List<string> { "Port must be between 1 and 65535" }
-            }
-        };
-        var mockPidFileService = new MockPidFileService();
-        var command = new StartCommand(mockApiClient, mockWebHost, mockPidFileService, TestLoggerFactory.CreateLogger<StartCommand>());
+        var command = CreateCommand();
         var options = new CommandOptions { Port = 99999 };
 
         // Act
@@ -107,27 +128,20 @@ public class StartCommandTests
         // Assert
         result.ExitCode.Should().Be(1); // User error
         result.Message.Should().Be("Invalid configuration");
-        mockWebHost.RunCalls.Should().BeEmpty(); // Should NOT start server
+        _mockWebHost.RunCalls.Should().BeEmpty(); // Should NOT start server
     }
 
     [Fact]
     public async Task ExecuteAsync_WhenValidAndNotDaemon_StartsServerAndReturnsSuccess()
     {
         // Arrange
-        var mockApiClient = new MockOpenTelWatcherApiClient
-        {
-            InstanceStatus = new InstanceStatus { IsRunning = false }
-        };
-        var mockWebHost = new MockWebApplicationHost
-        {
-            ValidationResultToReturn = ValidationResult.Success(),
-            ExitCodeToReturn = 0
-        };
-        var mockPidFileService = new MockPidFileService();
-        var command = new StartCommand(mockApiClient, mockWebHost, mockPidFileService, TestLoggerFactory.CreateLogger<StartCommand>());
+        _mockApiClient.InstanceStatus = new InstanceStatus { IsRunning = false };
+        _mockWebHost.ValidationResultToReturn = ValidationResult.Success();
+        _mockWebHost.ExitCodeToReturn = 0;
+        var command = CreateCommand();
         var options = new CommandOptions
         {
-            Port = 4318,
+            Port = TestConstants.Network.DefaultPort,
             OutputDirectory = Path.Combine(Path.GetTempPath(), "test-output"),
             LogLevel = LogLevel.Information,
             Daemon = false
@@ -139,11 +153,11 @@ public class StartCommandTests
         // Assert
         result.ExitCode.Should().Be(0); // Success
         result.Message.Should().Be("Server stopped gracefully");
-        mockWebHost.RunCalls.Should().HaveCount(1); // Should start server
+        _mockWebHost.RunCalls.Should().HaveCount(1); // Should start server
 
         // Verify server options
-        var serverOptions = mockWebHost.RunCalls[0];
-        serverOptions.Port.Should().Be(4318);
+        var serverOptions = _mockWebHost.RunCalls[0];
+        serverOptions.Port.Should().Be(TestConstants.Network.DefaultPort);
         serverOptions.OutputDirectory.Should().Be(options.OutputDirectory);
         serverOptions.LogLevel.Should().Be("Information");
         serverOptions.Daemon.Should().BeFalse();
@@ -162,8 +176,10 @@ public class StartCommandTests
             ValidationResultToReturn = ValidationResult.Success(),
             ExitCodeToReturn = 1 // Non-zero exit code
         };
-        var mockPidFileService = new MockPidFileService();
-        var command = new StartCommand(mockApiClient, mockWebHost, mockPidFileService, TestLoggerFactory.CreateLogger<StartCommand>());
+        var mockProcessProvider = new MockProcessProvider();
+        var mockTimeProvider = new MockTimeProvider();
+        var mockPidFileService = new MockPidFileService(mockProcessProvider);
+        var command = new StartCommand(mockApiClient, mockWebHost, mockPidFileService, mockProcessProvider, mockTimeProvider, TestLoggerFactory.CreateLogger<StartCommand>());
         var options = new CommandOptions
         {
             Port = 4318,
@@ -192,8 +208,10 @@ public class StartCommandTests
             ValidationResultToReturn = ValidationResult.Success(),
             ExceptionToThrow = new InvalidOperationException("Test exception")
         };
-        var mockPidFileService = new MockPidFileService();
-        var command = new StartCommand(mockApiClient, mockWebHost, mockPidFileService, TestLoggerFactory.CreateLogger<StartCommand>());
+        var mockProcessProvider = new MockProcessProvider();
+        var mockTimeProvider = new MockTimeProvider();
+        var mockPidFileService = new MockPidFileService(mockProcessProvider);
+        var command = new StartCommand(mockApiClient, mockWebHost, mockPidFileService, mockProcessProvider, mockTimeProvider, TestLoggerFactory.CreateLogger<StartCommand>());
         var options = new CommandOptions
         {
             Port = 4318,
@@ -223,8 +241,10 @@ public class StartCommandTests
             ValidationResultToReturn = ValidationResult.Success(),
             ExitCodeToReturn = 0
         };
-        var mockPidFileService = new MockPidFileService();
-        var command = new StartCommand(mockApiClient, mockWebHost, mockPidFileService, TestLoggerFactory.CreateLogger<StartCommand>());
+        var mockProcessProvider = new MockProcessProvider();
+        var mockTimeProvider = new MockTimeProvider();
+        var mockPidFileService = new MockPidFileService(mockProcessProvider);
+        var command = new StartCommand(mockApiClient, mockWebHost, mockPidFileService, mockProcessProvider, mockTimeProvider, TestLoggerFactory.CreateLogger<StartCommand>());
         var options = new CommandOptions
         {
             Port = 4318,
@@ -264,8 +284,10 @@ public class StartCommandTests
             ValidationResultToReturn = ValidationResult.Success(),
             ExitCodeToReturn = 0
         };
-        var mockPidFileService = new MockPidFileService();
-        var command = new StartCommand(mockApiClient, mockWebHost, mockPidFileService, TestLoggerFactory.CreateLogger<StartCommand>());
+        var mockProcessProvider = new MockProcessProvider();
+        var mockTimeProvider = new MockTimeProvider();
+        var mockPidFileService = new MockPidFileService(mockProcessProvider);
+        var command = new StartCommand(mockApiClient, mockWebHost, mockPidFileService, mockProcessProvider, mockTimeProvider, TestLoggerFactory.CreateLogger<StartCommand>());
         var options = new CommandOptions
         {
             Port = 5000,
@@ -290,20 +312,13 @@ public class StartCommandTests
     public async Task ExecuteAsync_CallsValidateBeforeStarting()
     {
         // Arrange
-        var mockApiClient = new MockOpenTelWatcherApiClient
-        {
-            InstanceStatus = new InstanceStatus { IsRunning = false }
-        };
-        var mockWebHost = new MockWebApplicationHost
-        {
-            ValidationResultToReturn = ValidationResult.Success(),
-            ExitCodeToReturn = 0
-        };
-        var mockPidFileService = new MockPidFileService();
-        var command = new StartCommand(mockApiClient, mockWebHost, mockPidFileService, TestLoggerFactory.CreateLogger<StartCommand>());
+        _mockApiClient.InstanceStatus = new InstanceStatus { IsRunning = false };
+        _mockWebHost.ValidationResultToReturn = ValidationResult.Success();
+        _mockWebHost.ExitCodeToReturn = 0;
+        var command = CreateCommand();
         var options = new CommandOptions
         {
-            Port = 4318,
+            Port = TestConstants.Network.DefaultPort,
             OutputDirectory = Path.Combine(Path.GetTempPath(), "test-output"),
             Daemon = false
         };
@@ -312,8 +327,9 @@ public class StartCommandTests
         await command.ExecuteAsync(options);
 
         // Assert
-        mockWebHost.RunCalls.Should().HaveCount(1);
-        // If validation failed, RunCalls would be empty, so this verifies validation was called
+        _mockWebHost.ValidateCalls.Should().HaveCount(1, "Validate should be called before starting");
+        _mockWebHost.ValidateCalls[0].Port.Should().Be(TestConstants.Network.DefaultPort);
+        _mockWebHost.RunCalls.Should().HaveCount(1, "Server should start after successful validation");
     }
 
     [Theory]
@@ -335,8 +351,10 @@ public class StartCommandTests
             ValidationResultToReturn = ValidationResult.Success(),
             ExitCodeToReturn = 0
         };
-        var mockPidFileService = new MockPidFileService();
-        var command = new StartCommand(mockApiClient, mockWebHost, mockPidFileService, TestLoggerFactory.CreateLogger<StartCommand>());
+        var mockProcessProvider = new MockProcessProvider();
+        var mockTimeProvider = new MockTimeProvider();
+        var mockPidFileService = new MockPidFileService(mockProcessProvider);
+        var command = new StartCommand(mockApiClient, mockWebHost, mockPidFileService, mockProcessProvider, mockTimeProvider, TestLoggerFactory.CreateLogger<StartCommand>());
         var options = new CommandOptions
         {
             Port = 4318,
@@ -370,8 +388,10 @@ public class StartCommandTests
             ValidationResultToReturn = ValidationResult.Success(),
             ExitCodeToReturn = 0
         };
-        var mockPidFileService = new MockPidFileService();
-        var command = new StartCommand(mockApiClient, mockWebHost, mockPidFileService, TestLoggerFactory.CreateLogger<StartCommand>());
+        var mockProcessProvider = new MockProcessProvider();
+        var mockTimeProvider = new MockTimeProvider();
+        var mockPidFileService = new MockPidFileService(mockProcessProvider);
+        var command = new StartCommand(mockApiClient, mockWebHost, mockPidFileService, mockProcessProvider, mockTimeProvider, TestLoggerFactory.CreateLogger<StartCommand>());
         var options = new CommandOptions
         {
             Port = 4318,
@@ -403,8 +423,10 @@ public class StartCommandTests
             ValidationResultToReturn = ValidationResult.Success(),
             ExitCodeToReturn = 0
         };
-        var mockPidFileService = new MockPidFileService();
-        var command = new StartCommand(mockApiClient, mockWebHost, mockPidFileService, TestLoggerFactory.CreateLogger<StartCommand>());
+        var mockProcessProvider = new MockProcessProvider();
+        var mockTimeProvider = new MockTimeProvider();
+        var mockPidFileService = new MockPidFileService(mockProcessProvider);
+        var command = new StartCommand(mockApiClient, mockWebHost, mockPidFileService, mockProcessProvider, mockTimeProvider, TestLoggerFactory.CreateLogger<StartCommand>());
         var options = new CommandOptions
         {
             Port = 4318,

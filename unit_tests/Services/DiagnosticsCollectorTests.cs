@@ -5,7 +5,7 @@ using OpenTelWatcher.Services.Interfaces;
 using UnitTests.Helpers;
 using Xunit;
 
-namespace OpenTelWatcher.Tests.Services;
+namespace UnitTests.Services;
 
 public class DiagnosticsCollectorTests : IDisposable
 {

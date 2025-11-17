@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using OpenTelWatcher.Configuration;
 using OpenTelWatcher.CLI.Models;
+using OpenTelWatcher.Services.Interfaces;
 
 namespace OpenTelWatcher.CLI.Services;
 
@@ -13,15 +14,17 @@ public sealed class OpenTelWatcherApiClient : IOpenTelWatcherApiClient
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger<OpenTelWatcherApiClient> _logger;
+    private readonly ITimeProvider _timeProvider;
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true
     };
 
-    public OpenTelWatcherApiClient(HttpClient httpClient, ILogger<OpenTelWatcherApiClient> logger)
+    public OpenTelWatcherApiClient(HttpClient httpClient, ILogger<OpenTelWatcherApiClient> logger, ITimeProvider timeProvider)
     {
         _httpClient = httpClient;
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
     }
 
     public async Task<StatusResponse?> GetStatusAsync()
@@ -137,9 +140,9 @@ public sealed class OpenTelWatcherApiClient : IOpenTelWatcherApiClient
 
     public async Task<bool> WaitForStopAsync(int timeoutSeconds = ApiConstants.Timeouts.ShutdownWaitSeconds)
     {
-        var endTime = DateTime.UtcNow.AddSeconds(timeoutSeconds);
+        var endTime = _timeProvider.UtcNow.AddSeconds(timeoutSeconds);
 
-        while (DateTime.UtcNow < endTime)
+        while (_timeProvider.UtcNow < endTime)
         {
             var status = await GetStatusAsync();
             if (status is null)

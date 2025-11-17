@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using OpenTelWatcher.Configuration;
 using OpenTelWatcher.CLI.Models;
 using OpenTelWatcher.CLI.Services;
@@ -12,16 +13,46 @@ namespace OpenTelWatcher.CLI.Commands;
 public sealed class StopCommand
 {
     private readonly IOpenTelWatcherApiClient _apiClient;
+    private readonly IPortResolver? _portResolver;
+    private readonly ILogger<StopCommand>? _logger;
 
+    /// <summary>
+    /// Legacy constructor for backward compatibility with existing tests.
+    /// </summary>
     public StopCommand(IOpenTelWatcherApiClient apiClient)
     {
-        _apiClient = apiClient;
+        _apiClient = apiClient ?? throw new ArgumentNullException(nameof(apiClient));
+        _portResolver = null;
+        _logger = null;
     }
 
+    public StopCommand(
+        IOpenTelWatcherApiClient apiClient,
+        IPortResolver portResolver,
+        ILogger<StopCommand> logger)
+    {
+        _apiClient = apiClient ?? throw new ArgumentNullException(nameof(apiClient));
+        _portResolver = portResolver ?? throw new ArgumentNullException(nameof(portResolver));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    }
+
+    /// <summary>
+    /// Legacy method for backward compatibility with existing tests.
+    /// </summary>
     public async Task<CommandResult> ExecuteAsync(bool silent = false, bool jsonOutput = false)
+    {
+        // Default behavior - no port resolution (will fail if called without proper setup)
+        return await ExecuteAsync(new CommandOptions { Port = null, Silent = silent }, jsonOutput);
+    }
+
+    public async Task<CommandResult> ExecuteAsync(CommandOptions options, bool jsonOutput = false)
     {
         var result = new Dictionary<string, object>();
         var cliVersion = Assembly.GetExecutingAssembly().GetName().Version ?? new Version(1, 0, 0);
+        var silent = options.Silent;
+
+        // Note: Port resolution now happens in CliApplication before this command is invoked
+        // The HttpClient is already configured with the correct port
 
         // Step 1: Check if instance is running
         var status = await _apiClient.GetInstanceStatusAsync(cliVersion);

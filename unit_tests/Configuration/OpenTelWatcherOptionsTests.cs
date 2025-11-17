@@ -2,7 +2,7 @@ using FluentAssertions;
 using OpenTelWatcher.Configuration;
 using Xunit;
 
-namespace OpenTelWatcher.Tests.Configuration;
+namespace UnitTests.Configuration;
 
 public class OpenTelWatcherOptionsTests
 {

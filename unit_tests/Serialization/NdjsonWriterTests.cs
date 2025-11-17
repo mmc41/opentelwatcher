@@ -3,7 +3,7 @@ using OpenTelWatcher.Serialization;
 using System.Text.Json;
 using Xunit;
 
-namespace OpenTelWatcher.Tests.Serialization;
+namespace UnitTests.Serialization;
 
 public class NdjsonWriterTests
 {

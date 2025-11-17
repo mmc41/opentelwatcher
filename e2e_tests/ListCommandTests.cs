@@ -1,10 +1,9 @@
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using FluentAssertions;
-using OpenTelWatcher.E2ETests.Helpers;
-using OpenTelWatcher.Tests.E2E;
 using Xunit;
 
-namespace OpenTelWatcher.E2ETests;
+namespace OpenTelWatcher.Tests.E2E;
 
 /// <summary>
 /// E2E tests for the 'list' CLI command.
@@ -13,6 +12,12 @@ namespace OpenTelWatcher.E2ETests;
 public class ListCommandTests : IAsyncLifetime
 {
     private const int TestPort = TestHelpers.DefaultTestPort;
+    private readonly ILogger<ListCommandTests> _logger;
+
+    public ListCommandTests()
+    {
+        _logger = TestLoggerFactory.CreateLogger<ListCommandTests>();
+    }
 
     public ValueTask InitializeAsync()
     {
@@ -29,6 +34,7 @@ public class ListCommandTests : IAsyncLifetime
     {
         // Arrange - create test files
         var testDir = TestHelpers.GetTestOutputDir("list-command/has-files");
+        _logger.LogInformation("Creating test files in {TestDir}", testDir);
         await File.WriteAllTextAsync(
             Path.Combine(testDir, "traces.20251116_143022_456.ndjson"),
             "{\"resourceSpans\":[]}\n",
@@ -39,9 +45,12 @@ public class ListCommandTests : IAsyncLifetime
             CancellationToken.None);
 
         // Act
+        _logger.LogInformation("Running list command");
         var result = await RunListCommand(testDir);
 
         // Assert
+        _logger.LogInformation("List command returned exit code {ExitCode}", result.ExitCode);
+        _logger.LogDebug("Output: {Output}", result.Output);
         result.ExitCode.Should().Be(0, "command should succeed");
         result.Output.Should().Contain("traces.20251116_143022_456.ndjson", "should list trace file");
         result.Output.Should().Contain("logs.20251116_143022_456.ndjson", "should list log file");

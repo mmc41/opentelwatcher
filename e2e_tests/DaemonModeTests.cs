@@ -1,10 +1,10 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using FluentAssertions;
-using OpenTelWatcher.Tests.E2E;
+using Microsoft.Extensions.Logging;
 using Xunit;
 
-namespace E2ETests.CLI;
+namespace OpenTelWatcher.Tests.E2E;
 
 /// <summary>
 /// E2E tests for daemon mode (--daemon flag).
@@ -16,11 +16,13 @@ public class DaemonModeTests
 {
     private readonly DaemonModeFixture _fixture;
     private readonly HttpClient _client;
+    private readonly ILogger<DaemonModeTests> _logger;
 
     public DaemonModeTests(DaemonModeFixture fixture)
     {
         _fixture = fixture ?? throw new ArgumentNullException(nameof(fixture));
         _client = fixture.Client;
+        _logger = TestLoggerFactory.CreateLogger<DaemonModeTests>();
     }
 
     #region Daemon Mode Tests
@@ -29,15 +31,23 @@ public class DaemonModeTests
     public async Task DaemonMode_VersionEndpoint_ReturnsVersionInfo()
     {
         // Act
+        _logger.LogInformation("Testing daemon mode version endpoint");
         var response = await _client.GetAsync("/api/status", TestContext.Current.CancellationToken);
 
         // Assert
         response.IsSuccessStatusCode.Should().BeTrue("daemon-started server should respond to version endpoint");
 
         var json = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
-        json.GetProperty("application").GetString().Should().Be("OpenTelWatcher", "should return application name");
-        json.GetProperty("version").GetString().Should().NotBeNullOrWhiteSpace("should return version");
-        json.GetProperty("versionComponents").GetProperty("major").GetInt32().Should().BeGreaterThanOrEqualTo(0, "major version should be valid");
+        var application = json.GetProperty("application").GetString();
+        var version = json.GetProperty("version").GetString();
+        var major = json.GetProperty("versionComponents").GetProperty("major").GetInt32();
+
+        _logger.LogInformation("Daemon server: Application={Application}, Version={Version}, Major={Major}",
+            application, version, major);
+
+        application.Should().Be("OpenTelWatcher", "should return application name");
+        version.Should().NotBeNullOrWhiteSpace("should return version");
+        major.Should().BeGreaterThanOrEqualTo(0, "major version should be valid");
     }
 
     [Fact]
@@ -95,11 +105,14 @@ public class DaemonModeTests
     public async Task DaemonMode_MultipleRequests_HandledSuccessfully()
     {
         // Act - make multiple concurrent requests
+        _logger.LogInformation("Sending 10 concurrent requests to daemon server");
         var tasks = Enumerable.Range(0, 10)
             .Select(_ => _client.GetAsync("/api/status", TestContext.Current.CancellationToken))
             .ToArray();
 
         var responses = await Task.WhenAll(tasks);
+
+        _logger.LogInformation("All {Count} concurrent requests completed", responses.Length);
 
         // Assert
         responses.Should().AllSatisfy(r => r.IsSuccessStatusCode.Should().BeTrue("all requests should succeed"));

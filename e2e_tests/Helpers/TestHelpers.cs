@@ -1,6 +1,6 @@
 using System.Diagnostics;
+using Microsoft.Extensions.Logging;
 using OpenTelWatcher.Configuration;
-using OpenTelWatcher.E2ETests.Helpers;
 
 namespace OpenTelWatcher.Tests.E2E;
 
@@ -62,11 +62,12 @@ public static class TestHelpers
     }
 
     /// <summary>
-    /// Gets a random port in the range 6000-7000 to avoid conflicts.
+    /// Gets a random port from the thread-safe allocator (6000-7000 range).
+    /// IMPORTANT: Remember to release the port with PortAllocator.Release() when done!
     /// </summary>
     public static int GetRandomPort()
     {
-        return Random.Shared.Next(6000, 7000);
+        return PortAllocator.Allocate();
     }
 
     /// <summary>
@@ -76,13 +77,17 @@ public static class TestHelpers
     /// <param name="arguments">Command arguments</param>
     /// <param name="solutionRoot">Solution root directory</param>
     /// <param name="timeoutSeconds">Timeout in seconds (default: 10)</param>
+    /// <param name="logger">Optional logger for diagnostic output</param>
     /// <returns>The exit code of the command</returns>
     public static async Task<int> RunCliCommandAsync(
         string executablePath,
         string arguments,
         string solutionRoot,
-        int timeoutSeconds = 10)
+        int timeoutSeconds = 10,
+        ILogger? logger = null)
     {
+        logger?.LogDebug("Running CLI command: {Executable} {Arguments}", executablePath, arguments);
+
         var startInfo = new ProcessStartInfo
         {
             FileName = executablePath,
@@ -97,17 +102,25 @@ public static class TestHelpers
         using var process = Process.Start(startInfo);
         if (process == null)
         {
-            throw new InvalidOperationException("Failed to start CLI process");
+            var error = "Failed to start CLI process";
+            logger?.LogError(error);
+            throw new InvalidOperationException(error);
         }
+
+        logger?.LogDebug("CLI process started (PID: {ProcessId})", process.Id);
 
         // Wait for process to complete with timeout
         try
         {
             await process.WaitForExitAsync(TestContext.Current.CancellationToken)
                 .WaitAsync(TimeSpan.FromSeconds(timeoutSeconds));
+
+            logger?.LogDebug("CLI command completed with exit code {ExitCode}", process.ExitCode);
         }
         catch (TimeoutException)
         {
+            logger?.LogWarning("CLI command timed out after {TimeoutSeconds}s, killing process {ProcessId}",
+                timeoutSeconds, process.Id);
             process.Kill(entireProcessTree: true);
             throw new TimeoutException($"CLI command timed out after {timeoutSeconds} seconds");
         }
@@ -177,11 +190,15 @@ public static class TestHelpers
     /// </summary>
     /// <param name="port">Port number to check</param>
     /// <param name="maxAttempts">Maximum number of attempts (default: 15)</param>
+    /// <param name="logger">Optional logger for diagnostic output</param>
     /// <returns>Task that completes when server is healthy</returns>
-    public static async Task WaitForServerHealthyAsync(int port, int maxAttempts = 15)
+    public static async Task WaitForServerHealthyAsync(int port, int maxAttempts = 15, ILogger? logger = null)
     {
+        logger?.LogDebug("Waiting for server on port {Port} to become healthy (max {MaxAttempts} attempts)",
+            port, maxAttempts);
+
         using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
-        var url = $"http://{ApiConstants.Network.LocalhostIp}:{port}/healthz";
+        var url = $"http://{ApiConstants.Network.LocalhostIp}:{port}{E2EConstants.WebEndpoints.Health}";
 
         for (var attempt = 0; attempt < maxAttempts; attempt++)
         {
@@ -190,18 +207,32 @@ public static class TestHelpers
                 var response = await client.GetAsync(url);
                 if (response.IsSuccessStatusCode)
                 {
+                    logger?.LogDebug("Server on port {Port} is healthy (attempt {Attempt}/{MaxAttempts})",
+                        port, attempt + 1, maxAttempts);
                     return;
                 }
+                logger?.LogDebug("Server returned {StatusCode} (attempt {Attempt}/{MaxAttempts})",
+                    response.StatusCode, attempt + 1, maxAttempts);
             }
-            catch (HttpRequestException)
+            catch (HttpRequestException ex)
             {
                 // Expected while server is starting
+                logger?.LogDebug("Connection failed (attempt {Attempt}/{MaxAttempts}): {Message}",
+                    attempt + 1, maxAttempts, ex.Message);
+            }
+            catch (TaskCanceledException)
+            {
+                // Timeout - expected while server is starting
+                logger?.LogDebug("Request timed out (attempt {Attempt}/{MaxAttempts})",
+                    attempt + 1, maxAttempts);
             }
 
             await Task.Delay(1000);
         }
 
-        throw new TimeoutException($"Server on port {port} did not become healthy within {maxAttempts} seconds");
+        var error = $"Server on port {port} did not become healthy within {maxAttempts} seconds";
+        logger?.LogError(error);
+        throw new TimeoutException(error);
     }
 
     /// <summary>
@@ -209,10 +240,13 @@ public static class TestHelpers
     /// If an instance is running, it will be stopped.
     /// </summary>
     /// <param name="port">Port number to check</param>
-    public static async Task EnsureNoInstanceRunningAsync(int port)
+    /// <param name="logger">Optional logger for diagnostic output</param>
+    public static async Task EnsureNoInstanceRunningAsync(int port, ILogger? logger = null)
     {
+        logger?.LogDebug("Checking if instance is running on port {Port}", port);
+
         using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(1) };
-        var url = $"http://{ApiConstants.Network.LocalhostIp}:{port}/healthz";
+        var url = $"http://{ApiConstants.Network.LocalhostIp}:{port}{E2EConstants.WebEndpoints.Health}";
 
         try
         {
@@ -220,21 +254,26 @@ public static class TestHelpers
             if (response.IsSuccessStatusCode)
             {
                 // Instance is running - stop it
-                await StopServerOnPortAsync(port);
+                logger?.LogInformation("Instance found running on port {Port}, stopping it", port);
+                await StopServerOnPortAsync(port, logger);
                 await Task.Delay(2000); // Wait for shutdown
+                logger?.LogDebug("Instance stopped on port {Port}", port);
             }
         }
-        catch (HttpRequestException)
+        catch (HttpRequestException ex)
         {
             // No instance running - good
+            logger?.LogDebug("No instance running on port {Port}: {Message}", port, ex.Message);
         }
         catch (TaskCanceledException)
         {
             // Timeout - no instance running - good
+            logger?.LogDebug("No instance running on port {Port} (timeout)", port);
         }
         catch (OperationCanceledException)
         {
             // Canceled - no instance running - good
+            logger?.LogDebug("No instance running on port {Port} (canceled)", port);
         }
     }
 
@@ -243,24 +282,40 @@ public static class TestHelpers
     /// </summary>
     /// <param name="port">Port number of the server</param>
     /// <param name="process">Optional process to kill if shutdown fails</param>
-    public static async Task StopServerAsync(int port, Process? process)
+    /// <param name="logger">Optional logger for diagnostic output</param>
+    public static async Task StopServerAsync(int port, Process? process, ILogger? logger = null)
     {
+        logger?.LogDebug("Stopping server on port {Port} (PID: {ProcessId})", port, process?.Id);
+
         try
         {
             using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
-            await client.PostAsync($"http://{ApiConstants.Network.LocalhostIp}:{port}/api/stop", null);
+            await client.PostAsync($"http://{ApiConstants.Network.LocalhostIp}:{port}{E2EConstants.ApiEndpoints.Stop}", null);
+
+            logger?.LogDebug("Shutdown request sent, waiting for graceful exit");
 
             // Wait for graceful shutdown
             if (process != null && !process.HasExited)
             {
-                process.WaitForExit(5000);
+                var exited = process.WaitForExit(5000);
+                if (exited)
+                {
+                    logger?.LogDebug("Server exited gracefully");
+                }
+                else
+                {
+                    logger?.LogWarning("Server did not exit gracefully within 5 seconds");
+                }
             }
         }
-        catch
+        catch (Exception ex)
         {
+            logger?.LogWarning("Error during shutdown request: {Message}", ex.Message);
+
             // If shutdown fails, kill the process
             if (process != null && !process.HasExited)
             {
+                logger?.LogWarning("Forcefully killing process {ProcessId}", process.Id);
                 process.Kill(entireProcessTree: true);
             }
         }
@@ -270,17 +325,22 @@ public static class TestHelpers
     /// Stops a server on the specified port by sending a shutdown request.
     /// </summary>
     /// <param name="port">Port number of the server</param>
-    public static async Task StopServerOnPortAsync(int port)
+    /// <param name="logger">Optional logger for diagnostic output</param>
+    public static async Task StopServerOnPortAsync(int port, ILogger? logger = null)
     {
+        logger?.LogDebug("Sending stop request to server on port {Port}", port);
+
         try
         {
             using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
-            await client.PostAsync($"http://{ApiConstants.Network.LocalhostIp}:{port}/api/stop", null);
+            await client.PostAsync($"http://{ApiConstants.Network.LocalhostIp}:{port}{E2EConstants.ApiEndpoints.Stop}", null);
             await Task.Delay(2000); // Wait for shutdown
+            logger?.LogDebug("Stop request completed for port {Port}", port);
         }
-        catch
+        catch (Exception ex)
         {
-            // Ignore errors
+            logger?.LogDebug("Error stopping server on port {Port}: {Message}", port, ex.Message);
+            // Ignore errors - server may already be stopped
         }
     }
 
@@ -288,17 +348,21 @@ public static class TestHelpers
     /// Cleans up output directory.
     /// </summary>
     /// <param name="path">Path to the directory to delete</param>
-    public static void CleanupOutputDirectory(string path)
+    /// <param name="logger">Optional logger for diagnostic output</param>
+    public static void CleanupOutputDirectory(string path, ILogger? logger = null)
     {
         try
         {
             if (Directory.Exists(path))
             {
+                logger?.LogDebug("Cleaning up directory: {Path}", path);
                 Directory.Delete(path, recursive: true);
+                logger?.LogDebug("Directory cleaned up: {Path}", path);
             }
         }
-        catch
+        catch (Exception ex)
         {
+            logger?.LogWarning("Error cleaning up directory {Path}: {Message}", path, ex.Message);
             // Ignore cleanup errors
         }
     }
@@ -342,9 +406,11 @@ public static class TestHelpers
                 });
                 chmod?.WaitForExit();
             }
-            catch
+            catch (Exception ex)
             {
-                // Ignore - file might already be executable
+                // Log permission errors to help debug Unix-specific issues
+                var logger = TestLoggerFactory.CreateLogger(typeof(TestHelpers));
+                logger.LogWarning(ex, "Failed to set executable permission on {ExecutablePath} (file might already be executable)", executablePath);
             }
         }
 
@@ -391,5 +457,30 @@ public static class TestHelpers
             Output = output,
             Error = error
         };
+    }
+
+    /// <summary>
+    /// Checks if a server is healthy on the specified port.
+    /// Returns true if the health endpoint responds with success, false otherwise.
+    /// </summary>
+    /// <param name="port">Port number to check</param>
+    /// <param name="logger">Optional logger for diagnostic output</param>
+    /// <returns>True if server is healthy, false otherwise</returns>
+    public static async Task<bool> CheckServerHealthAsync(int port, ILogger? logger = null)
+    {
+        try
+        {
+            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
+            var url = $"http://{ApiConstants.Network.LocalhostIp}:{port}{E2EConstants.WebEndpoints.Health}";
+            var response = await client.GetAsync(url);
+
+            logger?.LogDebug("Health check for port {Port}: {StatusCode}", port, response.StatusCode);
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception ex)
+        {
+            logger?.LogDebug("Health check failed for port {Port}: {Message}", port, ex.Message);
+            return false;
+        }
     }
 }

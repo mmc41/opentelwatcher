@@ -1,8 +1,9 @@
 using FluentAssertions;
 using OpenTelWatcher.Configuration;
+using UnitTests.Helpers;
 using Xunit;
 
-namespace OpenTelWatcher.Tests.Configuration;
+namespace UnitTests.Configuration;
 
 public class ConfigurationValidatorTests
 {
@@ -12,10 +13,10 @@ public class ConfigurationValidatorTests
         // Arrange
         var options = new OpenTelWatcherOptions
         {
-            OutputDirectory = "./telemetry-data",
-            MaxFileSizeMB = 100,
-            MaxErrorHistorySize = 50,
-            MaxConsecutiveFileErrors = 10,
+            OutputDirectory = TestConstants.FileNames.DefaultOutputDirectory,
+            MaxFileSizeMB = TestConstants.DefaultConfig.MaxFileSizeMB,
+            MaxErrorHistorySize = TestConstants.DefaultConfig.MaxErrorHistorySize,
+            MaxConsecutiveFileErrors = TestConstants.DefaultConfig.MaxConsecutiveFileErrors,
             RequestTimeoutSeconds = 30
         };
 

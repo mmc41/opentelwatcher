@@ -7,6 +7,7 @@ using OpenTelWatcher.CLI.Models;
 using OpenTelWatcher.CLI.Services;
 using OpenTelWatcher.Hosting;
 using OpenTelWatcher.Services.Interfaces;
+using static OpenTelWatcher.Configuration.DefaultPorts;
 
 namespace OpenTelWatcher.CLI.Commands;
 
@@ -20,12 +21,16 @@ public sealed class StartCommand
     private readonly IOpenTelWatcherApiClient _apiClient;
     private readonly IWebApplicationHost _webHost;
     private readonly IPidFileService _pidFileService;
+    private readonly IProcessProvider _processProvider;
+    private readonly ITimeProvider _timeProvider;
 
-    public StartCommand(IOpenTelWatcherApiClient apiClient, IWebApplicationHost webHost, IPidFileService pidFileService, ILogger<StartCommand> logger)
+    public StartCommand(IOpenTelWatcherApiClient apiClient, IWebApplicationHost webHost, IPidFileService pidFileService, IProcessProvider processProvider, ITimeProvider timeProvider, ILogger<StartCommand> logger)
     {
         _apiClient = apiClient;
         _webHost = webHost;
         _pidFileService = pidFileService;
+        _processProvider = processProvider ?? throw new ArgumentNullException(nameof(processProvider));
+        _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -33,7 +38,7 @@ public sealed class StartCommand
     {
         var result = new Dictionary<string, object>
         {
-            ["port"] = options.Port,
+            ["port"] = options.Port ?? Otlp,
             ["outputDirectory"] = options.OutputDirectory,
             ["daemon"] = options.Daemon
         };
@@ -53,10 +58,11 @@ public sealed class StartCommand
         }
 
         // Step 1b: Check PID file for instances on the same port and clean stale entries
-        var existingEntry = _pidFileService.GetEntryByPort(options.Port);
-        if (existingEntry != null && existingEntry.IsRunning())
+        var port = options.Port ?? Otlp; // Default port for start command
+        var existingEntry = _pidFileService.GetEntryByPort(port);
+        if (existingEntry != null && existingEntry.IsRunning(_processProvider))
         {
-            return BuildPortInUseByPidFileResult(result, options.Port, existingEntry, options.Silent, jsonOutput);
+            return BuildPortInUseByPidFileResult(result, port, existingEntry, options.Silent, jsonOutput);
         }
 
         // Clean stale entries while we're at it
@@ -65,7 +71,7 @@ public sealed class StartCommand
         // Step 2: Validate configuration
         var serverOptions = new ServerOptions
         {
-            Port = options.Port,
+            Port = port,
             OutputDirectory = options.OutputDirectory,
             LogLevel = options.LogLevel.ToString(),
             Daemon = options.Daemon,
@@ -115,7 +121,7 @@ public sealed class StartCommand
 
     private CommandResult BuildPortInUseByPidFileResult(Dictionary<string, object> result, int port, PidEntry entry, bool silent, bool jsonOutput)
     {
-        var uptime = DateTime.UtcNow - entry.Timestamp;
+        var uptime = entry.GetAge(_timeProvider);
         var uptimeStr = uptime.TotalHours >= 1
             ? $"{uptime.TotalHours:F1} hours ago"
             : uptime.TotalMinutes >= 1
@@ -327,10 +333,15 @@ public sealed class StartCommand
         }
 
         var process = Process.Start(startInfo);
+
+        // Validate process started successfully before any further operations
         if (process == null)
         {
+            const string errorMessage = "Failed to start daemon process - Process.Start returned null";
+            _logger.LogError(errorMessage);
+
             result["success"] = false;
-            result["error"] = "Failed to start process";
+            result["error"] = errorMessage;
 
             if (jsonOutput)
             {
@@ -338,10 +349,10 @@ public sealed class StartCommand
             }
             else if (!options.Silent)
             {
-                Console.WriteLine("Error: Failed to start process");
+                Console.WriteLine($"Error: {errorMessage}");
             }
 
-            return CommandResult.SystemError("Failed to start process");
+            return CommandResult.SystemError(errorMessage);
         }
 
         // Verify daemon started successfully
@@ -497,7 +508,7 @@ public sealed class StartCommand
             }
             else if (!options.Silent)
             {
-                Console.WriteLine($"Watcher started successfully on port {options.Port}");
+                Console.WriteLine($"Watcher started successfully on port {options.Port ?? Otlp}");
                 Console.WriteLine($"Output directory: {NormalizePathForDisplay(options.OutputDirectory)}");
             }
 
@@ -583,9 +594,10 @@ public sealed class StartCommand
     private string BuildChildProcessArgs(CommandOptions options)
     {
         var args = new List<string> { "start" };
+        var port = options.Port ?? Otlp;
 
         args.Add("--port");
-        args.Add(options.Port.ToString());
+        args.Add(port.ToString());
 
         args.Add("--output-dir");
         args.Add(QuoteIfNeeded(options.OutputDirectory));
@@ -638,7 +650,7 @@ public sealed class StartCommand
     /// Used on Linux/macOS for daemon mode implementation.
     /// </summary>
     /// <returns>True if nohup is available, false otherwise</returns>
-    private static bool IsNohupAvailable()
+    private bool IsNohupAvailable()
     {
         try
         {
@@ -656,16 +668,19 @@ public sealed class StartCommand
             using var process = Process.Start(checkProcess);
             if (process == null)
             {
+                _logger.LogDebug("Process.Start returned null when checking for nohup availability");
                 return false;
             }
 
             process.WaitForExit(1000); // 1 second timeout
             return process.ExitCode == 0;
         }
-        catch (Exception)
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception ||
+                                     ex is InvalidOperationException ||
+                                     ex is IOException)
         {
             // If we can't check, assume it's not available
-            // Cannot log from static method
+            _logger.LogDebug(ex, "Unable to determine nohup availability - assuming not available");
             return false;
         }
     }

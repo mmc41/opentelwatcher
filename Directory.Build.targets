@@ -83,6 +83,42 @@
              Importance="High" />
   </Target>
 
+  <!-- Inspect test logs for warnings and errors (automated log inspection per CLAUDE.md) -->
+  <Target Name="InspectTestLogs" AfterTargets="CheckUngracefulShutdowns" Condition="'$(IsTestProject)' == 'true'">
+    <PropertyGroup>
+      <LogInspectionProject>.build/CheckTestLogs/CheckTestLogs.csproj</LogInspectionProject>
+      <LogsDirectory>artifacts/logs</LogsDirectory>
+    </PropertyGroup>
+
+    <!-- Run C# console app to check logs (only if logs directory exists) -->
+    <Exec Command="dotnet run --project $(LogInspectionProject) -- $(LogsDirectory)"
+          Condition="Exists('$(MSBuildThisFileDirectory)$(LogsDirectory)')"
+          ContinueOnError="true"
+          IgnoreExitCode="false"
+          ConsoleToMSBuild="false"
+          StandardOutputImportance="High"
+          StandardErrorImportance="High"
+          WorkingDirectory="$(MSBuildThisFileDirectory)" />
+  </Target>
+
+  <!-- Analyze test execution times for slow tests (automated performance monitoring) -->
+  <Target Name="AnalyzeTestExecutionTimes" AfterTargets="InspectTestLogs" Condition="'$(IsTestProject)' == 'true'">
+    <PropertyGroup>
+      <TestTimingProject>.build/AnalyzeTestTimes/AnalyzeTestTimes.csproj</TestTimingProject>
+      <TrxDirectory>artifacts/test-results</TrxDirectory>
+    </PropertyGroup>
+
+    <!-- Run C# console app to analyze test times (only if TRX directory exists) -->
+    <Exec Command="dotnet run --project $(TestTimingProject) -- $(TrxDirectory)"
+          Condition="Exists('$(MSBuildThisFileDirectory)$(TrxDirectory)')"
+          ContinueOnError="true"
+          IgnoreExitCode="false"
+          ConsoleToMSBuild="false"
+          StandardOutputImportance="High"
+          StandardErrorImportance="High"
+          WorkingDirectory="$(MSBuildThisFileDirectory)" />
+  </Target>
+
   <!-- Clean artifacts directory when running 'dotnet clean' -->
   <Target Name="CleanArtifacts" BeforeTargets="Clean" Condition="'$(CleanArtifactsExecuted)' != 'true'">
     <PropertyGroup>

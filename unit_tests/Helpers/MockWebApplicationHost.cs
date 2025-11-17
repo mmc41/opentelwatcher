@@ -14,6 +14,11 @@ public class MockWebApplicationHost : IWebApplicationHost
     public List<ServerOptions> RunCalls { get; } = new();
 
     /// <summary>
+    /// Records all calls to Validate with their options.
+    /// </summary>
+    public List<ServerOptions> ValidateCalls { get; } = new();
+
+    /// <summary>
     /// The validation result to return from Validate().
     /// </summary>
     public ValidationResult ValidationResultToReturn { get; set; } = ValidationResult.Success();
@@ -57,6 +62,7 @@ public class MockWebApplicationHost : IWebApplicationHost
 
     public ValidationResult Validate(ServerOptions options)
     {
+        ValidateCalls.Add(options);
         return ValidationResultToReturn;
     }
 }

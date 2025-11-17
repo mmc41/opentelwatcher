@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Microsoft.Extensions.Logging;
 using FluentAssertions;
 using Xunit;
 
@@ -13,15 +14,18 @@ namespace OpenTelWatcher.Tests.E2E;
 /// - 1: User error (e.g., invalid arguments, instance already running)
 /// - 2: System error (e.g., failed to start server, incompatible version)
 /// </summary>
-public class CliCommandExitCodeTests
+public class CliCommandExitCodeTests : IDisposable
 {
     private readonly string _executablePath;
     private readonly string _solutionRoot;
+    private readonly List<int> _portsToRelease = new();
+    private readonly ILogger<CliCommandExitCodeTests> _logger;
 
     public CliCommandExitCodeTests()
     {
         _solutionRoot = TestHelpers.SolutionRoot;
         _executablePath = TestHelpers.GetWatcherExecutablePath(_solutionRoot);
+        _logger = TestLoggerFactory.CreateLogger<CliCommandExitCodeTests>();
     }
 
     #region Stop Command Tests
@@ -30,12 +34,15 @@ public class CliCommandExitCodeTests
     public async Task StopCommand_WhenNoInstanceRunning_ReturnsExitCode1()
     {
         // Arrange - ensure no instance is running
+        _logger.LogInformation("Ensuring no instance running on port 4318");
         await TestHelpers.EnsureNoInstanceRunningAsync(4318);
 
         // Act
+        _logger.LogInformation("Running 'stop' command, expecting exit code 1");
         var exitCode = await TestHelpers.RunCliCommandAsync(_executablePath, "stop", _solutionRoot);
 
         // Assert
+        _logger.LogInformation("Stop command returned exit code {ExitCode}", exitCode);
         exitCode.Should().Be(1, "stop command should return exit code 1 when no instance is running");
     }
 
@@ -82,6 +89,7 @@ public class CliCommandExitCodeTests
     {
         // Arrange - start an instance
         var port = TestHelpers.GetRandomPort();
+        _portsToRelease.Add(port);
         using var serverProcess = await TestHelpers.StartServerAsync(_executablePath, port, _solutionRoot);
         await TestHelpers.WaitForServerHealthyAsync(port);
 
@@ -127,24 +135,41 @@ public class CliCommandExitCodeTests
     {
         // Arrange
         var port = TestHelpers.GetRandomPort();
+        _portsToRelease.Add(port);
+        _logger.LogInformation("Testing daemon mode on port {Port}", port);
+
         var outputDir = Path.Combine(_solutionRoot, "artifacts", "test-telemetry", "daemon");
 
         try
         {
             // Act - start in daemon mode
+            _logger.LogInformation("Starting daemon mode with output dir {OutputDir}", outputDir);
             var exitCode = await TestHelpers.RunCliCommandAsync(_executablePath, $"start --daemon --port {port} --output-dir \"{outputDir}\"", _solutionRoot, timeoutSeconds: 15);
 
             // Assert
+            _logger.LogInformation("Daemon start returned exit code {ExitCode}", exitCode);
             exitCode.Should().Be(0, "daemon mode start should return exit code 0 on success");
 
             // Verify server is running
+            _logger.LogInformation("Waiting for server to become healthy");
             await TestHelpers.WaitForServerHealthyAsync(port);
+            _logger.LogInformation("Server is healthy");
         }
         finally
         {
             // Cleanup - stop the daemon
+            _logger.LogInformation("Stopping daemon on port {Port}", port);
             await TestHelpers.StopServerOnPortAsync(port);
             TestHelpers.CleanupOutputDirectory(outputDir);
+        }
+    }
+
+    public void Dispose()
+    {
+        // Release all allocated ports back to the pool
+        foreach (var port in _portsToRelease)
+        {
+            PortAllocator.Release(port);
         }
     }
 

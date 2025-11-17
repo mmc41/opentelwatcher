@@ -1,6 +1,9 @@
 using FluentAssertions;
 using OpenTelWatcher.CLI.Commands;
 using OpenTelWatcher.CLI.Models;
+using OpenTelWatcher.CLI.Services;
+using OpenTelWatcher.Services.Interfaces;
+using UnitTests.Helpers;
 using UnitTests.Mocks;
 
 namespace UnitTests.CLI.Commands;
@@ -281,4 +284,9 @@ public class StopCommandTests
         result.Message.Should().Be("Service stopped");
         // Silent mode suppresses output but command still succeeds
     }
+
+    // Note: Port resolution tests have been removed from StopCommand unit tests.
+    // Port resolution now happens in CliApplication before StopCommand is invoked,
+    // ensuring the HttpClient is configured with the correct port.
+    // Port resolution logic is tested in PortResolverTests.
 }

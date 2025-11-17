@@ -2,7 +2,7 @@ using OpenTelWatcher.Services;
 using FluentAssertions;
 using Xunit;
 
-namespace OpenTelWatcher.Tests.Services;
+namespace UnitTests.Services;
 
 public class TelemetryStatisticsTests
 {

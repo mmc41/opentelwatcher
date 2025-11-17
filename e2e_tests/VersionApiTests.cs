@@ -1,26 +1,28 @@
-using OpenTelWatcher.E2ETests;
-using OpenTelWatcher.Tests.E2E;
 using System.Net.Http.Json;
 using System.Text.Json;
 using FluentAssertions;
+using Microsoft.Extensions.Logging;
 using Xunit;
 
-namespace E2ETests;
+namespace OpenTelWatcher.Tests.E2E;
 
 [Collection("Watcher Server")]
 public class VersionApiTests
 {
     private readonly OpenTelWatcherServerFixture _fixture;
+    private readonly ILogger<VersionApiTests> _logger;
 
     public VersionApiTests(OpenTelWatcherServerFixture fixture)
     {
         _fixture = fixture;
+        _logger = TestLoggerFactory.CreateLogger<VersionApiTests>();
     }
 
     [Fact]
     public async Task VersionEndpoint_ReturnsCorrectStructure()
     {
         // Act
+        _logger.LogInformation("Calling /api/status to verify version structure");
         var response = await _fixture.Client.GetAsync("/api/status", TestContext.Current.CancellationToken);
 
         // Assert
@@ -30,6 +32,9 @@ public class VersionApiTests
         {
             PropertyNameCaseInsensitive = true
         });
+
+        _logger.LogInformation("Version info: Application={Application}, Version={Version}, ProcessId={ProcessId}",
+            info?.Application, info?.Version, info?.ProcessId);
 
         info.Should().NotBeNull();
         info!.Application.Should().Be("OpenTelWatcher");
@@ -57,11 +62,15 @@ public class VersionApiTests
     public async Task VersionEndpoint_ReturnsConsistentVersion()
     {
         // Act - Call twice
+        _logger.LogInformation("Calling /api/status twice to verify consistency");
         var response1 = await _fixture.Client.GetAsync("/api/status", TestContext.Current.CancellationToken);
         var info1 = await response1.Content.ReadFromJsonAsync<StatusResponse>(cancellationToken: TestContext.Current.CancellationToken);
 
         var response2 = await _fixture.Client.GetAsync("/api/status", TestContext.Current.CancellationToken);
         var info2 = await response2.Content.ReadFromJsonAsync<StatusResponse>(cancellationToken: TestContext.Current.CancellationToken);
+
+        _logger.LogInformation("First call: Version={Version1}, Second call: Version={Version2}",
+            info1?.Version, info2?.Version);
 
         // Assert - Should be identical
         info1.Should().BeEquivalentTo(info2);

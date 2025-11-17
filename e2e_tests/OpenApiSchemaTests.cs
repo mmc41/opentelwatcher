@@ -1,6 +1,6 @@
-using OpenTelWatcher.E2ETests;
 using System.Net;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using Xunit;
 using FluentAssertions;
 
@@ -10,16 +10,19 @@ namespace OpenTelWatcher.Tests.E2E;
 public class OpenApiSchemaTests
 {
     private readonly OpenTelWatcherServerFixture _fixture;
+    private readonly ILogger<OpenApiSchemaTests> _logger;
 
     public OpenApiSchemaTests(OpenTelWatcherServerFixture fixture)
     {
         _fixture = fixture;
+        _logger = TestLoggerFactory.CreateLogger<OpenApiSchemaTests>();
     }
 
     [Fact]
     public async Task OpenApiSchema_ShouldHaveRequiredProperties()
     {
         // Act
+        _logger.LogInformation("Testing OpenAPI schema has required properties");
         var response = await _fixture.Client.GetAsync("/openapi/v1.json", TestContext.Current.CancellationToken);
         var content = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         var spec = JsonDocument.Parse(content);
@@ -28,6 +31,8 @@ public class OpenApiSchemaTests
         response.StatusCode.Should().Be(HttpStatusCode.OK);
 
         var root = spec.RootElement;
+        _logger.LogDebug("OpenAPI version: {Version}", root.GetProperty("openapi").GetString());
+
         root.TryGetProperty("openapi", out _).Should().BeTrue("Schema should have 'openapi' version");
         root.TryGetProperty("info", out _).Should().BeTrue("Schema should have 'info' section");
         root.TryGetProperty("paths", out _).Should().BeTrue("Schema should have 'paths' section");

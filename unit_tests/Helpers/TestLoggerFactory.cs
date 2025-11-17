@@ -33,4 +33,12 @@ public static class TestLoggerFactory
     {
         return _loggerFactory.CreateLogger<T>();
     }
+
+    /// <summary>
+    /// Creates a real ILogger instance for the specified type.
+    /// </summary>
+    public static ILogger CreateLogger(Type type)
+    {
+        return _loggerFactory.CreateLogger(type);
+    }
 }

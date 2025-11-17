@@ -106,6 +106,11 @@ public class WebApplicationHost : IWebApplicationHost
     /// </summary>
     private void RegisterServices(WebApplicationBuilder builder, OpenTelWatcherOptions watcherOptions, ServerOptions options)
     {
+        // System abstraction services (for testability)
+        builder.Services.AddSingleton<IEnvironment, EnvironmentAdapter>();
+        builder.Services.AddSingleton<IProcessProvider, ProcessProvider>();
+        builder.Services.AddSingleton<ITimeProvider, SystemTimeProvider>();
+
         // Core services
         builder.Services.AddSingleton(watcherOptions);
         builder.Services.AddSingleton<IFileRotationService, FileRotationService>();
@@ -374,18 +379,26 @@ public class WebApplicationHost : IWebApplicationHost
 
         // Status endpoint - combines version, diagnostics, and statistics
         apiGroup.MapGet("/status", (
+            IHostApplicationLifetime lifetime,
             IDiagnosticsCollector diagnostics,
             ITelemetryStatistics telemetryStats,
+            ITimeProvider timeProvider,
             [System.ComponentModel.Description("Optional signal type filter (traces, logs, or metrics)")]
             string? signal) =>
         {
+            // Return 503 Service Unavailable if application is shutting down
+            if (lifetime.ApplicationStopping.IsCancellationRequested)
+            {
+                return Results.StatusCode(503);
+            }
+
             var assembly = Assembly.GetExecutingAssembly();
             var version = assembly.GetName().Version ?? new Version(1, 0, 0);
             var fileInfos = diagnostics.GetFileInfo(signal);
 
             // Calculate uptime
             var processStartTime = Process.GetCurrentProcess().StartTime;
-            var uptimeSeconds = (long)(DateTime.Now - processStartTime).TotalSeconds;
+            var uptimeSeconds = (long)(timeProvider.UtcNow - processStartTime).TotalSeconds;
 
             // Get file breakdown by type
             var allFiles = diagnostics.GetFileInfo(null);
@@ -456,6 +469,7 @@ public class WebApplicationHost : IWebApplicationHost
         apiGroup.MapPost("/stop", async (
             IHostApplicationLifetime lifetime,
             HttpContext context,
+            ITimeProvider timeProvider,
             ILogger<WebApplicationHost> logger) =>
         {
             logger.LogWarning("Stop requested via /api/stop endpoint");
@@ -464,7 +478,7 @@ public class WebApplicationHost : IWebApplicationHost
             await context.Response.WriteAsJsonAsync(new
             {
                 message = "Stop initiated",
-                timestamp = DateTime.UtcNow
+                timestamp = timeProvider.UtcNow
             });
             await context.Response.CompleteAsync();
 
@@ -486,6 +500,7 @@ public class WebApplicationHost : IWebApplicationHost
         apiGroup.MapPost("/clear", async (
             ITelemetryFileManager fileManager,
             OpenTelWatcherOptions options,
+            ITimeProvider timeProvider,
             CancellationToken cancellationToken) =>
         {
             var filesDeleted = await fileManager.ClearAllFilesAsync(options.OutputDirectory, cancellationToken);
@@ -495,7 +510,7 @@ public class WebApplicationHost : IWebApplicationHost
                 success = true,
                 filesDeleted,
                 message = $"Successfully deleted {filesDeleted} telemetry file(s)",
-                timestamp = DateTime.UtcNow
+                timestamp = timeProvider.UtcNow
             });
         })
         .WithSummary("Clear all telemetry files")

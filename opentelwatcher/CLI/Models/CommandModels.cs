@@ -1,3 +1,5 @@
+using OpenTelWatcher.Configuration;
+
 namespace OpenTelWatcher.CLI.Models;
 
 /// <summary>
@@ -5,12 +7,29 @@ namespace OpenTelWatcher.CLI.Models;
 /// </summary>
 public sealed record CommandOptions
 {
-    public int Port { get; init; } = 4318;
+    /// <summary>
+    /// Port number. Null for auto-resolution from PID file (stop, status, list, clear commands).
+    /// For start command, defaults to 4318.
+    /// </summary>
+    public int? Port { get; init; } = DefaultPorts.Otlp;
     public string OutputDirectory { get; init; } = "./telemetry-data";
     public LogLevel LogLevel { get; init; } = LogLevel.Information;
     public bool Daemon { get; init; } = false;
     public bool Silent { get; init; } = false;
     public bool Verbose { get; init; } = false;
+}
+
+/// <summary>
+/// Command-line options for status command
+/// </summary>
+public sealed record StatusOptions
+{
+    public int? Port { get; init; }
+    public bool ErrorsOnly { get; init; } = false;
+    public bool StatsOnly { get; init; } = false;
+    public bool Verbose { get; init; } = false;
+    public bool Quiet { get; init; } = false;
+    public string? OutputDir { get; init; }
 }
 
 /// <summary>

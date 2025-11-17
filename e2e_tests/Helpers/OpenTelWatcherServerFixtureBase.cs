@@ -34,8 +34,8 @@ public abstract class OpenTelWatcherServerFixtureBase : IAsyncLifetime, IDisposa
 
     protected OpenTelWatcherServerFixtureBase()
     {
-        // Use a random port to avoid conflicts with other test runs
-        _port = Random.Shared.Next(5000, 6000);
+        // Allocate port from thread-safe pool to avoid conflicts
+        _port = PortAllocator.Allocate();
         _baseUrl = $"http://{ApiConstants.Network.LocalhostIp}:{_port}";
 
         // Get logger from TestLoggerFactory
@@ -112,8 +112,12 @@ public abstract class OpenTelWatcherServerFixtureBase : IAsyncLifetime, IDisposa
         {
             _watcherProcess?.Dispose();
             _client?.Dispose();
+
+            // Release port back to pool
+            PortAllocator.Release(_port);
+
             _disposed = true;
-            _logger.LogInformation("Fixture {0} disposed", GetType().Name);
+            _logger.LogInformation("Fixture {0} disposed (port {1} released)", GetType().Name, _port);
         }
     }
 
@@ -181,9 +185,11 @@ public abstract class OpenTelWatcherServerFixtureBase : IAsyncLifetime, IDisposa
                     });
                     chmodProcess?.WaitForExit();
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // Ignore chmod errors - file might already be executable
+                    // Log permission errors to help debug Unix-specific issues
+                    var logger = TestLoggerFactory.CreateLogger<OpenTelWatcherServerFixtureBase>();
+                    logger.LogWarning(ex, "Failed to set executable permission on {ExecutablePath} (file might already be executable)", executablePath);
                 }
             }
         }

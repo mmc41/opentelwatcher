@@ -4,7 +4,7 @@ using OpenTelWatcher.Services;
 using UnitTests.Helpers;
 using Xunit;
 
-namespace OpenTelWatcher.Tests.Services;
+namespace UnitTests.Services;
 
 public class TelemetryFileManagerTests : IDisposable
 {
