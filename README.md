@@ -1733,7 +1733,6 @@ This project follows strict Test-Driven Development (TDD):
 1. Write tests first (they must fail initially)
 2. Implement functionality (tests must pass)
 3. All code must have zero compiler warnings
-4. 80% code coverage goal
 
 ## License
 
