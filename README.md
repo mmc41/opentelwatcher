@@ -2,10 +2,6 @@
 
 A minimal, file-based OpenTelemetry collector for local development and testing. Receives OTLP telemetry data over HTTP and persists it as NDJSON files for easy inspection by developers and AI tools.
 
-## About
-
-> Historical note (October 2025): Most of the project code has been developed in a few days as a Claude code LLM-driven development experiement with human-in-the-loop as architect/test manager/reviwer but not as a developer. An early version of github speckit was used for the initial core application, which it did surprisingly well except for one major hiccup and a too long main program file. For subsequent changes and quality improvements, speckit was to heavy to use so plain claude code was used under human direction, usually in plan mode. The process used a considerable amount of reviews and rework instructions when the AI decided on a bad approach like f.x. using goto statements or duplicating code. All in all, very little code and documentation was written by hand.
-
 ## Status
 
 [![build](https://github.com/mmc41/opentelwatcher/actions/workflows/build-validation.yml/badge.svg)](https://github.com/mmc41/opentelwatcher/actions/workflows/build-validation.yml)
@@ -39,6 +35,10 @@ OpenTelWatcher is a lightweight OTLP receiver designed for **development and tes
 - Compression (gzip)
 - Data forwarding or exporting
 - Dashboards or visualizations
+
+## About
+
+> Historical note (October 2025): Most of the project code has been developed in a few days as a Claude code LLM-driven development experiement with human-in-the-loop as architect/test manager/reviwer but not as a developer. An early version of github speckit was used for the initial core application, which it did surprisingly well except for one major hiccup and a too long main program file. For subsequent changes and quality improvements, speckit was to heavy to use so plain claude code was used under human direction, usually in plan mode. The process used a considerable amount of reviews and rework instructions when the AI decided on a bad approach like f.x. using goto statements or duplicating code. All in all, very little code and documentation was written by hand.
 
 ## Prerequisites
 
