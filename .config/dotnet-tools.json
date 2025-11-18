@@ -8,10 +8,10 @@
         "trx"
       ]
     },
-    "dotnet-reportgenerator-globaltool": {
-      "version": "5.5.0",
+    "dotnet-coverage": {
+      "version": "17.12.6",
       "commands": [
-        "reportgenerator"
+        "dotnet-coverage"
       ]
     }
   }

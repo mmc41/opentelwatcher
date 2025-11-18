@@ -44,7 +44,7 @@ public class PortResolver : IPortResolver
         // 4. Handle cases based on active entry count
         if (activeEntries.Count == 0)
         {
-            _logger.LogError("No running instances found. Cannot determine port automatically.");
+            _logger.LogWarning("No running instances found. Cannot determine port automatically.");
             throw new InvalidOperationException(
                 "No running instances found. Cannot determine port automatically.\n\n" +
                 "To start a new instance:\n" +
@@ -56,7 +56,7 @@ public class PortResolver : IPortResolver
         if (activeEntries.Count > 1)
         {
             var ports = string.Join(", ", activeEntries.Select(e => e.Port).OrderBy(p => p));
-            _logger.LogError("Multiple instances running on ports: {Ports}", ports);
+            _logger.LogWarning("Multiple instances running on ports: {Ports}", ports);
             throw new InvalidOperationException(
                 $"Multiple instances running on ports: {ports}\n\n" +
                 "Please specify which instance to target:\n" +

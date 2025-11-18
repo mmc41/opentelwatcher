@@ -11,17 +11,67 @@
   <!-- Data collection settings for code coverage -->
   <DataCollectionRunSettings>
     <DataCollectors>
-      <!-- XPlat Code Coverage collector (coverlet) -->
-      <DataCollector friendlyName="XPlat Code Coverage">
+      <!-- Microsoft Code Coverage collector (replaces Coverlet) -->
+      <DataCollector friendlyName="Code Coverage" uri="datacollector://Microsoft/CodeCoverage/2.0">
         <Configuration>
-          <!-- Output format: Cobertura XML -->
-          <Format>cobertura</Format>
-          <!-- Include opentelwatcher bin directory for E2E test coverage -->
-          <IncludeDirectory>./artifacts/bin/opentelwatcher/Debug</IncludeDirectory>
-          <!-- Exclude test assemblies from coverage -->
-          <Exclude>[*tests]*</Exclude>
-          <!-- Exclude auto-generated files -->
-          <ExcludeByFile>**/Migrations/**,**/*.g.cs,**/*.Designer.cs,**/opentelemetry/Proto/**</ExcludeByFile>
+          <CodeCoverage>
+            <!-- CRITICAL: Enable child process coverage for E2E tests -->
+            <CollectFromChildProcesses>True</CollectFromChildProcesses>
+
+            <!-- Performance optimizations -->
+            <UseVerifiableInstrumentation>True</UseVerifiableInstrumentation>
+            <AllowLowIntegrityProcesses>True</AllowLowIntegrityProcesses>
+
+            <!-- Instrumentation scope -->
+            <ModulePaths>
+              <Include>
+                <ModulePath>.*opentelwatcher\.dll$</ModulePath>
+                <ModulePath>.*opentelwatcher\.exe$</ModulePath>
+              </Include>
+              <Exclude>
+                <!-- Exclude test assemblies -->
+                <ModulePath>.*tests\.dll$</ModulePath>
+                <ModulePath>.*testhost.*\.dll$</ModulePath>
+
+                <!-- Exclude Microsoft assemblies -->
+                <ModulePath>.*microsoft.*\.dll$</ModulePath>
+                <ModulePath>.*system.*\.dll$</ModulePath>
+
+                <!-- Exclude third-party packages -->
+                <ModulePath>.*nlog.*\.dll$</ModulePath>
+                <ModulePath>.*google\.protobuf.*\.dll$</ModulePath>
+                <ModulePath>.*fluentassertions.*\.dll$</ModulePath>
+                <ModulePath>.*xunit.*\.dll$</ModulePath>
+              </Exclude>
+            </ModulePaths>
+
+            <!-- Exclude auto-generated code by file path -->
+            <Sources>
+              <Exclude>
+                <Source>.*\\Migrations\\.*</Source>
+                <Source>.*\\.g\.cs$</Source>
+                <Source>.*\.Designer\.cs$</Source>
+                <Source>.*\\opentelemetry\\Proto\\.*</Source>
+              </Exclude>
+            </Sources>
+
+            <!-- Exclude by attributes -->
+            <Attributes>
+              <Exclude>
+                <Attribute>^System\.Diagnostics\.CodeAnalysis\.ExcludeFromCodeCoverageAttribute$</Attribute>
+                <Attribute>^System\.CodeDom\.Compiler\.GeneratedCodeAttribute$</Attribute>
+              </Exclude>
+            </Attributes>
+
+            <!-- Functions to exclude (if needed) -->
+            <Functions>
+              <Exclude>
+                <!-- Example: Exclude property getters/setters -->
+                <!-- <Function>^.*\.get_.*$</Function> -->
+                <!-- <Function>^.*\.set_.*$</Function> -->
+              </Exclude>
+            </Functions>
+          </CodeCoverage>
         </Configuration>
       </DataCollector>
     </DataCollectors>

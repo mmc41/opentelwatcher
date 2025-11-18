@@ -36,26 +36,42 @@
   <!-- Generate coverage summary automatically after tests complete -->
   <Target Name="GenerateCoverageSummary" AfterTargets="VSTest" Condition="'$(IsTestProject)' == 'true'">
     <PropertyGroup>
-      <CoverageReportsPath>$(MSBuildThisFileDirectory)artifacts\test-results\**\coverage.cobertura.xml</CoverageReportsPath>
+      <!-- dotnet-coverage produces .coverage files (binary format) -->
+      <CoverageFilesPattern>$(MSBuildThisFileDirectory)artifacts\test-results\**\*.coverage</CoverageFilesPattern>
+      <MergedCoverageFile>$(MSBuildThisFileDirectory)artifacts\coverage-report\merged.coverage</MergedCoverageFile>
+      <XmlCoverageFile>$(MSBuildThisFileDirectory)artifacts\coverage-report\coverage.xml</XmlCoverageFile>
       <CoverageOutputPath>$(MSBuildThisFileDirectory)artifacts\coverage-report</CoverageOutputPath>
     </PropertyGroup>
 
-    <!-- Only generate if coverage files exist -->
+    <!-- Check if coverage files exist -->
     <ItemGroup>
-      <CoverageFiles Include="$(MSBuildThisFileDirectory)artifacts\test-results\**\coverage.cobertura.xml" />
+      <CoverageFiles Include="$(CoverageFilesPattern)" />
     </ItemGroup>
 
-    <!-- Generate text summary report -->
-    <Exec Command="dotnet reportgenerator &quot;-reports:$(CoverageReportsPath)&quot; &quot;-targetdir:$(CoverageOutputPath)&quot; &quot;-reporttypes:TextSummary&quot;"
+    <!-- Step 1: Merge all .coverage files into single binary -->
+    <Exec Command="dotnet-coverage merge &quot;$(CoverageFilesPattern)&quot; -o &quot;$(MergedCoverageFile)&quot;"
           Condition="'@(CoverageFiles)' != ''"
           ContinueOnError="true"
           IgnoreExitCode="false"
           ConsoleToMSBuild="true"
           StandardOutputImportance="Low" />
 
-    <Message Text="Coverage report generated at: $(CoverageOutputPath)\Summary.txt"
-             Condition="'@(CoverageFiles)' != '' AND Exists('$(CoverageOutputPath)\Summary.txt')"
-             Importance="High" />
+    <!-- Step 2: Convert binary .coverage to Visual Studio XML -->
+    <Exec Command="dotnet-coverage merge &quot;$(MergedCoverageFile)&quot; -o &quot;$(XmlCoverageFile)&quot; -f xml"
+          Condition="Exists('$(MergedCoverageFile)')"
+          ContinueOnError="true"
+          IgnoreExitCode="false"
+          ConsoleToMSBuild="true"
+          StandardOutputImportance="Low" />
+
+    <!-- Step 3: Extract coverage summary using custom parser (avoids duplicate key issues) -->
+    <Exec Command="dotnet run --project $(MSBuildThisFileDirectory).build/ExtractCoverageSummary/ExtractCoverageSummary.csproj -- &quot;$(XmlCoverageFile)&quot; &quot;$(CoverageOutputPath)\Summary.txt&quot;"
+          Condition="Exists('$(XmlCoverageFile)')"
+          ContinueOnError="true"
+          IgnoreExitCode="false"
+          ConsoleToMSBuild="true"
+          StandardOutputImportance="Low" />
+
   </Target>
 
   <!-- Check for ungraceful shutdowns after test execution -->
@@ -117,6 +133,29 @@
           StandardOutputImportance="High"
           StandardErrorImportance="High"
           WorkingDirectory="$(MSBuildThisFileDirectory)" />
+  </Target>
+
+  <!-- Display final code coverage summary (single line, only for last test project) -->
+  <Target Name="DisplayCoverageSummary" AfterTargets="AnalyzeTestExecutionTimes" Condition="'$(IsTestProject)' == 'true' AND '$(MSBuildProjectName)' == 'e2e_tests'">
+    <PropertyGroup>
+      <CoverageSummaryProject>.build/DisplayCoverageSummary/DisplayCoverageSummary.csproj</CoverageSummaryProject>
+      <CoverageSummaryFile>$(MSBuildThisFileDirectory)artifacts/coverage-report/Summary.txt</CoverageSummaryFile>
+    </PropertyGroup>
+
+    <!-- Run C# console app to display coverage summary (only once at the end) -->
+    <!-- Capture output and echo via Message to ensure visibility at all verbosity levels -->
+    <Exec Command="dotnet run --project $(CoverageSummaryProject) -- $(CoverageSummaryFile)"
+          Condition="Exists('$(CoverageSummaryFile)')"
+          ContinueOnError="true"
+          IgnoreExitCode="false"
+          ConsoleToMSBuild="true"
+          StandardOutputImportance="Low"
+          WorkingDirectory="$(MSBuildThisFileDirectory)">
+      <Output TaskParameter="ConsoleOutput" PropertyName="CoverageSummaryOutput" />
+    </Exec>
+
+    <!-- Echo captured output with High importance (shows at minimal verbosity and above) -->
+    <Message Text="$(CoverageSummaryOutput)" Importance="high" Condition="'$(CoverageSummaryOutput)' != ''" />
   </Target>
 
   <!-- Clean artifacts directory when running 'dotnet clean' -->

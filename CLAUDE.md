@@ -14,9 +14,8 @@
 - Terminal.css CSS framework (002-status-page)
 - XUnit 3 testing framework (001-otlp-file-storage)
 - FluentAssertions (001-otlp-file-storage)
-- Coverlet code coverage (003-test-reporting)
+- dotnet-coverage code coverage (003-test-reporting)
 - dotnet-trx test reporter (003-test-reporting)
-- ReportGenerator coverage reports (003-test-reporting)
 
 ## Project Structure
 
@@ -353,16 +352,23 @@ Check application logs in `artifacts/logs/opentelwatcher-all-{date}.log` for por
 ### Test Reporting and Coverage
 
 **Note:** `dotnet test` is pre-configured to automatically:
-- Collect code coverage (coverlet)
-- Generate TRX test reports
+- Collect code coverage (Microsoft.CodeCoverage with child process support)
+- Generate binary .coverage files
+- Merge coverage across all test projects
 - Output all artifacts to `./artifacts/`
 - Use minimal verbosity by default for clean output
 
+**Coverage Collection:**
+- Uses Microsoft.CodeCoverage (dotnet-coverage) for comprehensive coverage tracking
+- Supports child process coverage (E2E tests with Process.Start)
+- Coverage data stored in shared memory (survives crashes)
+- Automatic solution-level merging
+
 **Centralized Build Outputs:**
 - All build outputs (bin, obj) are centralized in `./artifacts/` folder
-- Organized by project name: `artifacts/bin/{project}/Debug/`
-- Keeps project directories clean and organized
-- Single `dotnet clean` removes all build artifacts
+- Coverage files: `./artifacts/test-results/**/*.coverage` (binary format)
+- Merged coverage: `./artifacts/coverage-report/merged.coverage`
+- Visual Studio XML: `./artifacts/coverage-report/coverage.xml`
 
 **Test Output Verbosity:**
 - Default verbosity set to `minimal` in `Directory.Build.props` (VSTestVerbosity property)
@@ -375,22 +381,19 @@ Check application logs in `artifacts/logs/opentelwatcher-all-{date}.log` for por
 # Install reporting tools (first time only)
 dotnet tool restore
 
-# Run tests (minimal output by default)
+# Run tests (minimal output by default, auto-collects coverage)
 dotnet test
 
 # Run tests with verbose output (shows individual test results)
 dotnet test --verbosity normal
 
-# Generate HTML coverage report for browsing
-dotnet reportgenerator \
-  "-reports:./artifacts/test-results/**/coverage.cobertura.xml" \
-  "-targetdir:./artifacts/coverage-report" \
-  "-reporttypes:Html"
+# Convert coverage to Visual Studio XML format (done automatically by MSBuild)
+dotnet-coverage merge ./artifacts/test-results/**/*.coverage \
+  -o ./artifacts/coverage-report/coverage.xml \
+  -f xml
 
-# Open HTML coverage report
-start ./artifacts/coverage-report/index.html  # Windows
-open ./artifacts/coverage-report/index.html   # macOS
-xdg-open ./artifacts/coverage-report/index.html  # Linux
+# View coverage summary (generated automatically after tests)
+cat ./artifacts/coverage-report/Summary.txt
 
 # Generate unified HTML test report (from TRX files)
 cd ./artifacts/test-results && dotnet trx
@@ -543,4 +546,4 @@ args → Program.cs (try/catch/finally wrapper)
 **Other:**
 - Do not mock ILogger or ILoggerFactory. Do not use NullLogger. Also do not use NLog api directly except from configuration.
 - When the user finds a bug or a review finds a bug (outside the normal process of adding a feature) do  first try to reproduce it with a unit or E2E test before fixing the bug.
-- All code and build/test infrastructure must be cross platform so it works on windows, mac and linux.
+- All code and build/test infrastructure must be cross platform so it works on windows, mac and linux (without installing special tools/shells to simulate other platforms)

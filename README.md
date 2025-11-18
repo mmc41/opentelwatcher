@@ -1021,7 +1021,7 @@ dotnet tool restore
 
 This installs:
 - `dotnet-trx` - Test result reporting tool
-- `dotnet-reportgenerator-globaltool` - Code coverage report generator
+- `dotnet-coverage` - Microsoft code coverage tool
 
 These tools are required by the build process for test reporting and coverage analysis.
 
