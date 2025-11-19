@@ -1,5 +1,9 @@
+#!/usr/bin/dotnet run
+
+#:sdk Microsoft.NET.Sdk
+
 // Extract coverage summary from Visual Studio XML coverage file
-// Usage: ExtractCoverageSummary <coverage.xml> <Summary.txt>
+// Usage: dotnet run extract-coverage-summary.cs <coverage.xml> <Summary.txt>
 
 using System.Xml.Linq;
 

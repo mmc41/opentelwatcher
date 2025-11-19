@@ -85,6 +85,12 @@ artifacts/                   # All build outputs and reports (gitignored)
 ├── coverage-report/        # HTML coverage reports
 └── logs/                   # NLog application and test logs
 
+.build/                     # Build automation scripts (.NET 10 single-file apps)
+├── extract-coverage-summary.cs    # Extracts coverage data from XML to Summary.txt
+├── check-test-logs.cs             # Checks test logs for warnings/errors
+├── analyze-test-times.cs          # Analyzes TRX files for slow tests
+└── display-coverage-summary.cs    # Displays coverage percentage
+
 .config/                    # Tooling configuration
 └── dotnet-tools.json       # Local tool manifest
 
@@ -542,6 +548,52 @@ args → Program.cs (try/catch/finally wrapper)
 - Status page forces 127.0.0.1 in all displayed endpoint URLs
 - HTTP clients use 127.0.0.1 for API communication
 - Avoids IPv4/IPv6 ambiguity and ensures consistent behavior
+
+**Build Automation Scripts (.build/ directory):**
+- Uses .NET 10 single-file apps feature (no .csproj files needed)
+- Each script is a standalone .cs file with shebang and SDK directive
+- Invoked via `dotnet run script.cs [args]` from MSBuild targets
+- All scripts use relative paths and `WorkingDirectory` in Directory.Build.targets
+
+**Single-File App Format:**
+```csharp
+#!/usr/bin/dotnet run
+
+#:sdk Microsoft.NET.Sdk
+
+// Script code here (top-level statements)
+using System;
+
+if (args.Length == 0)
+{
+    Console.WriteLine("Usage: script <args>");
+    return 1;
+}
+
+// Main logic
+return 0;
+```
+
+**Available Scripts:**
+- `extract-coverage-summary.cs` - Parses Visual Studio XML coverage file to extract summary stats
+- `check-test-logs.cs` - Scans NLog files for warnings (ungraceful shutdowns, PID file issues, errors)
+- `analyze-test-times.cs` - Analyzes TRX files to detect slow tests (>2s warning, >5s error)
+- `display-coverage-summary.cs` - Displays line coverage percentage from Summary.txt
+
+**MSBuild Integration (Directory.Build.targets):**
+```xml
+<!-- Example: Extract coverage summary -->
+<Exec Command="dotnet run .build\extract-coverage-summary.cs &quot;$(XmlCoverageFile)&quot; &quot;$(OutputPath)\Summary.txt&quot;"
+      WorkingDirectory="$(MSBuildThisFileDirectory)"
+      ContinueOnError="true" />
+```
+
+**Benefits:**
+- No project files or dependencies to maintain
+- Fast execution (no restore/build required)
+- Self-documenting with shebang and SDK directive
+- Cross-platform (works on Windows, macOS, Linux)
+- Easy to modify and test (`dotnet run .build\script.cs`)
 
 **Other:**
 - Do not mock ILogger or ILoggerFactory. Do not use NullLogger. Also do not use NLog api directly except from configuration.

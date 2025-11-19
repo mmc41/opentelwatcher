@@ -1,3 +1,7 @@
+#!/usr/bin/dotnet run
+
+#:sdk Microsoft.NET.Sdk
+
 // Analyze test execution times from TRX files
 // This script is called automatically after test execution by MSBuild
 // Usage: dotnet run analyze-test-times.cs [TrxDirectory] [WarningThresholdMs] [ErrorThresholdMs]

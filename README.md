@@ -1025,6 +1025,31 @@ This installs:
 
 These tools are required by the build process for test reporting and coverage analysis.
 
+### Build Automation Scripts
+
+OpenTelWatcher uses .NET 10 single-file apps for build automation (located in `.build/`). These lightweight scripts handle test reporting, coverage analysis, and log inspection during the build process.
+
+**What are single-file apps?**
+- Standalone .cs files that can be executed directly with `dotnet run script.cs`
+- No .csproj files or project dependencies needed
+- Self-contained with shebang (`#!/usr/bin/dotnet run`) and SDK directive (`#:sdk Microsoft.NET.Sdk`)
+
+**Available scripts:**
+- `extract-coverage-summary.cs` - Extracts coverage statistics from XML coverage files
+- `check-test-logs.cs` - Scans test logs for warnings and errors
+- `analyze-test-times.cs` - Analyzes test execution times from TRX files
+- `display-coverage-summary.cs` - Displays final coverage percentage
+
+These scripts are automatically invoked by MSBuild during `dotnet test` and `dotnet build` operations. You can also run them manually:
+
+```bash
+# Example: Check test logs manually
+dotnet run .build/check-test-logs.cs artifacts/logs
+
+# Example: Analyze test times
+dotnet run .build/analyze-test-times.cs artifacts/test-results
+```
+
 ### Build All Projects
 
 ```bash

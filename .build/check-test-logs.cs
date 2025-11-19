@@ -1,3 +1,7 @@
+#!/usr/bin/dotnet run
+
+#:sdk Microsoft.NET.Sdk
+
 // Check test logs for warnings and errors
 // This script is called automatically after test execution by MSBuild
 // Usage: dotnet run check-test-logs.cs [LogDirectory]

@@ -1,5 +1,9 @@
+#!/usr/bin/dotnet run
+
+#:sdk Microsoft.NET.Sdk
+
 // Display code coverage summary - extracts line coverage percentage from Summary.txt
-// Usage: dotnet run --project DisplayCoverageSummary.csproj -- <summary-file-path>
+// Usage: dotnet run display-coverage-summary.cs <summary-file-path>
 
 if (args.Length == 0)
 {

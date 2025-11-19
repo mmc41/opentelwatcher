@@ -65,12 +65,13 @@
           StandardOutputImportance="Low" />
 
     <!-- Step 3: Extract coverage summary using custom parser (avoids duplicate key issues) -->
-    <Exec Command="dotnet run --project $(MSBuildThisFileDirectory).build/ExtractCoverageSummary/ExtractCoverageSummary.csproj -- &quot;$(XmlCoverageFile)&quot; &quot;$(CoverageOutputPath)\Summary.txt&quot;"
+    <Exec Command="dotnet run .build\extract-coverage-summary.cs &quot;$(XmlCoverageFile)&quot; &quot;$(CoverageOutputPath)\Summary.txt&quot;"
           Condition="Exists('$(XmlCoverageFile)')"
           ContinueOnError="true"
           IgnoreExitCode="false"
           ConsoleToMSBuild="true"
-          StandardOutputImportance="Low" />
+          StandardOutputImportance="Low"
+          WorkingDirectory="$(MSBuildThisFileDirectory)" />
 
   </Target>
 
@@ -102,12 +103,11 @@
   <!-- Inspect test logs for warnings and errors (automated log inspection per CLAUDE.md) -->
   <Target Name="InspectTestLogs" AfterTargets="CheckUngracefulShutdowns" Condition="'$(IsTestProject)' == 'true'">
     <PropertyGroup>
-      <LogInspectionProject>.build/CheckTestLogs/CheckTestLogs.csproj</LogInspectionProject>
       <LogsDirectory>artifacts/logs</LogsDirectory>
     </PropertyGroup>
 
     <!-- Run C# console app to check logs (only if logs directory exists) -->
-    <Exec Command="dotnet run --project $(LogInspectionProject) -- $(LogsDirectory)"
+    <Exec Command="dotnet run .build\check-test-logs.cs $(LogsDirectory)"
           Condition="Exists('$(MSBuildThisFileDirectory)$(LogsDirectory)')"
           ContinueOnError="true"
           IgnoreExitCode="false"
@@ -120,12 +120,11 @@
   <!-- Analyze test execution times for slow tests (automated performance monitoring) -->
   <Target Name="AnalyzeTestExecutionTimes" AfterTargets="InspectTestLogs" Condition="'$(IsTestProject)' == 'true'">
     <PropertyGroup>
-      <TestTimingProject>.build/AnalyzeTestTimes/AnalyzeTestTimes.csproj</TestTimingProject>
       <TrxDirectory>artifacts/test-results</TrxDirectory>
     </PropertyGroup>
 
     <!-- Run C# console app to analyze test times (only if TRX directory exists) -->
-    <Exec Command="dotnet run --project $(TestTimingProject) -- $(TrxDirectory)"
+    <Exec Command="dotnet run .build\analyze-test-times.cs $(TrxDirectory)"
           Condition="Exists('$(MSBuildThisFileDirectory)$(TrxDirectory)')"
           ContinueOnError="true"
           IgnoreExitCode="false"
@@ -138,13 +137,12 @@
   <!-- Display final code coverage summary (single line, only for last test project) -->
   <Target Name="DisplayCoverageSummary" AfterTargets="AnalyzeTestExecutionTimes" Condition="'$(IsTestProject)' == 'true' AND '$(MSBuildProjectName)' == 'e2e_tests'">
     <PropertyGroup>
-      <CoverageSummaryProject>.build/DisplayCoverageSummary/DisplayCoverageSummary.csproj</CoverageSummaryProject>
       <CoverageSummaryFile>$(MSBuildThisFileDirectory)artifacts/coverage-report/Summary.txt</CoverageSummaryFile>
     </PropertyGroup>
 
     <!-- Run C# console app to display coverage summary (only once at the end) -->
     <!-- Capture output and echo via Message to ensure visibility at all verbosity levels -->
-    <Exec Command="dotnet run --project $(CoverageSummaryProject) -- $(CoverageSummaryFile)"
+    <Exec Command="dotnet run .build\display-coverage-summary.cs $(CoverageSummaryFile)"
           Condition="Exists('$(CoverageSummaryFile)')"
           ContinueOnError="true"
           IgnoreExitCode="false"
