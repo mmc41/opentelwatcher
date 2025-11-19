@@ -43,6 +43,8 @@ public sealed class CliApplication
             "  opentelwatcher start                              Start with defaults from appsettings.json\n" +
             "  opentelwatcher start --port 5000 -o ./data        Start on custom port with custom output directory\n" +
             "  opentelwatcher start --daemon                     Start in background (non-blocking)\n" +
+            "  opentelwatcher start --tails                      Start with live telemetry output to stdout\n" +
+            "  opentelwatcher start --tails --tails-filter-errors-only  Start with live error output only\n" +
             "  opentelwatcher stop                               Stop the running instance\n" +
             "  opentelwatcher status                             Quick health status summary\n" +
             "  opentelwatcher status --verbose                   Detailed telemetry and file statistics\n" +
@@ -179,6 +181,8 @@ public sealed class CliApplication
             "  --output-dir, -o <path>  Output directory (default from appsettings.json)\n" +
             "  --log-level <level>      Log level: Trace, Debug, Information, Warning, Error, Critical (default: Information)\n" +
             "  --daemon                 Run in background (non-blocking mode)\n" +
+            "  --tails                  Output live telemetry to stdout (all signals: traces, logs, metrics)\n" +
+            "  --tails-filter-errors-only  Only output errors when using --tails (requires --tails)\n" +
             "  --silent                 Suppress all output except errors (overrides --verbose)\n" +
             "  --verbose                Enable verbose console output\n" +
             "  --json                   Output results in JSON format")
@@ -274,18 +278,6 @@ public sealed class CliApplication
             Description = "Output results in JSON format",
             DefaultValueFactory = _ => false
         };
-        var tailsOption = new Option<bool>("--tails")
-        {
-            Description = "Output live telemetry to stdout in addition to files",
-            DefaultValueFactory = _ => false
-        };
-
-        var tailsFilterErrorsOnlyOption = new Option<bool>("--tails-filter-errors-only")
-        {
-            Description = "Only output errors when using --tails (requires --tails)",
-            DefaultValueFactory = _ => false
-        };
-
 
         var stopCommand = new Command("stop", "Stop the running OpenTelWatcher instance\n\n" +
             "Sends shutdown request to the running instance via HTTP API.\n" +
@@ -363,18 +355,6 @@ public sealed class CliApplication
             Description = "Output results in JSON format",
             DefaultValueFactory = _ => false
         };
-        var tailsOption = new Option<bool>("--tails")
-        {
-            Description = "Output live telemetry to stdout in addition to files",
-            DefaultValueFactory = _ => false
-        };
-
-        var tailsFilterErrorsOnlyOption = new Option<bool>("--tails-filter-errors-only")
-        {
-            Description = "Only output errors when using --tails (requires --tails)",
-            DefaultValueFactory = _ => false
-        };
-
 
         var outputDirOption = new Option<string?>("--output-dir")
         {
@@ -496,18 +476,6 @@ public sealed class CliApplication
             Description = "Output results in JSON format",
             DefaultValueFactory = _ => false
         };
-        var tailsOption = new Option<bool>("--tails")
-        {
-            Description = "Output live telemetry to stdout in addition to files",
-            DefaultValueFactory = _ => false
-        };
-
-        var tailsFilterErrorsOnlyOption = new Option<bool>("--tails-filter-errors-only")
-        {
-            Description = "Only output errors when using --tails (requires --tails)",
-            DefaultValueFactory = _ => false
-        };
-
 
         var clearCommand = new Command("clear", "Clear telemetry data files\n\n" +
             "If an instance is running: Clears files via API using the instance's output directory\n" +
@@ -525,8 +493,6 @@ public sealed class CliApplication
             outputDirOption,
             silentOption,
             verboseOption,
-            tailsOption,
-            tailsFilterErrorsOnlyOption,
             jsonOption
         };
 
@@ -536,8 +502,6 @@ public sealed class CliApplication
             var outputDir = parseResult.GetValue(outputDirOption);
             var silent = parseResult.GetValue(silentOption);
             var verbose = parseResult.GetValue(verboseOption);
-            var tails = parseResult.GetValue(tailsOption);
-            var tailsFilterErrorsOnly = parseResult.GetValue(tailsFilterErrorsOnlyOption);
             var json = parseResult.GetValue(jsonOption);
 
             // Resolve port (auto-detect from PID file if not specified)
@@ -590,18 +554,6 @@ public sealed class CliApplication
             Description = "Output results in JSON format",
             DefaultValueFactory = _ => false
         };
-        var tailsOption = new Option<bool>("--tails")
-        {
-            Description = "Output live telemetry to stdout in addition to files",
-            DefaultValueFactory = _ => false
-        };
-
-        var tailsFilterErrorsOnlyOption = new Option<bool>("--tails-filter-errors-only")
-        {
-            Description = "Only output errors when using --tails (requires --tails)",
-            DefaultValueFactory = _ => false
-        };
-
 
         var listCommand = new Command("list", "List telemetry data files\n\n" +
             "Scans the output directory for .ndjson telemetry files.\n" +
