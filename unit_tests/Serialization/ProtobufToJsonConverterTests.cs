@@ -154,5 +154,35 @@ public class ProtobufToJsonConverterTests
         spans.Should().HaveCount(1);
         spans[0].GetProperty("name").GetString().Should().Be("test-span");
     }
+
+    [Fact]
+    public void ConvertToJson_WithSpanEvents_PreservesEvents()
+    {
+        // Arrange
+        var span = new Span
+        {
+            TraceId = ByteString.CopyFrom(new byte[16]),
+            SpanId = ByteString.CopyFrom(new byte[8]),
+            Name = "test-span"
+        };
+
+        var spanEvent = new Span.Types.Event
+        {
+            Name = "test-event",
+            TimeUnixNano = 1700000000000000000
+        };
+        span.Events.Add(spanEvent);
+
+        var request = new ExportTraceServiceRequest();
+        request.ResourceSpans.Add(new ResourceSpans());
+        request.ResourceSpans[0].ScopeSpans.Add(new ScopeSpans());
+        request.ResourceSpans[0].ScopeSpans[0].Spans.Add(span);
+
+        // Act
+        var json = ProtobufToJsonConverter.ConvertToJson(request, prettyPrint: false);
+
+        // Assert
+        json.Should().Contain("test-event");
+    }
 }
 

@@ -197,12 +197,12 @@ public class ListCommandTests : IAsyncLifetime
             Path.Combine(testDir, "traces.20251116_100000_000.ndjson"),
             "{\"resourceSpans\":[]}\n",
             CancellationToken.None);
-        await Task.Delay(10, TestContext.Current.CancellationToken); // Ensure different timestamps
+        await Task.Delay(E2EConstants.Delays.TimestampDifferentiationMs, TestContext.Current.CancellationToken); // Ensure different timestamps
         await File.WriteAllTextAsync(
             Path.Combine(testDir, "logs.20251116_110000_000.ndjson"),
             "{\"resourceLogs\":[]}\n",
             CancellationToken.None);
-        await Task.Delay(10, TestContext.Current.CancellationToken);
+        await Task.Delay(E2EConstants.Delays.TimestampDifferentiationMs, TestContext.Current.CancellationToken);
         await File.WriteAllTextAsync(
             Path.Combine(testDir, "metrics.20251116_120000_000.ndjson"),
             "{\"resourceMetrics\":[]}\n",

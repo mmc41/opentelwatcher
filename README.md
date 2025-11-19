@@ -35,6 +35,7 @@ OpenTelWatcher is a lightweight OTLP receiver designed for **development and tes
 - Compression (gzip)
 - Data forwarding or exporting
 - Dashboards or visualizations
+- OpenTelemetry Baggage (W3C baggage headers)
 
 ## About
 
@@ -1746,6 +1747,39 @@ OpenTelWatcher is designed for **development and testing only**. It does not sup
 - **Data forwarding** - Files only, no export to other systems
 - **Dashboards** - No built-in visualization
 - **Production workloads** - Not optimized for high-throughput scenarios
+- **OpenTelemetry Baggage** - W3C baggage headers are not captured or stored
+
+### OpenTelemetry Baggage Support
+
+OpenTelemetry Baggage (contextual metadata passed via W3C `baggage` HTTP headers) is **not currently supported**.
+
+**Why baggage is not captured:**
+- Baggage is transmitted as HTTP headers (`baggage: key1=value1,key2=value2`), not within the OTLP protobuf payload
+- OpenTelWatcher only processes the protobuf message body from OTLP endpoints
+- The standard OTLP/HTTP protocol does not include baggage in the trace, log, or metric protobuf definitions
+
+**What IS captured:**
+- **trace_state** - W3C Trace Context state (similar to baggage but part of the protobuf schema)
+- **Span events** - Timestamped annotations within spans
+- All standard OTLP attributes, resources, and instrumentation scope data
+
+**Adding baggage support:**
+
+If you need to capture baggage values for debugging, you would need to add custom middleware to intercept HTTP headers before they reach the OTLP endpoints:
+
+```csharp
+app.Use(async (context, next) =>
+{
+    if (context.Request.Headers.TryGetValue("baggage", out var baggageHeader))
+    {
+        // Log or process baggage header
+        // Store in a custom format alongside telemetry files
+    }
+    await next();
+});
+```
+
+For most debugging scenarios, span attributes and events provide sufficient context without requiring baggage support.
 
 For production observability, use:
 - [OpenTelemetry Collector](https://opentelemetry.io/docs/collector/)

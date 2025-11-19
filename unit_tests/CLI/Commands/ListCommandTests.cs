@@ -1,5 +1,6 @@
 using FluentAssertions;
 using OpenTelWatcher.CLI.Commands;
+using UnitTests.Helpers;
 using Xunit;
 
 namespace UnitTests.CLI.Commands;
@@ -234,9 +235,9 @@ public class ListCommandTests : IDisposable
 
         // Write in specific order with delays to ensure different timestamps
         File.WriteAllText(file2, "{}");
-        await Task.Delay(10, TestContext.Current.CancellationToken);
+        await Task.Delay(TestConstants.Delays.TimestampDifferentiationMs, TestContext.Current.CancellationToken);
         File.WriteAllText(file3, "{}");
-        await Task.Delay(10, TestContext.Current.CancellationToken);
+        await Task.Delay(TestConstants.Delays.TimestampDifferentiationMs, TestContext.Current.CancellationToken);
         File.WriteAllText(file1, "{}");
 
         var command = new ListCommand();

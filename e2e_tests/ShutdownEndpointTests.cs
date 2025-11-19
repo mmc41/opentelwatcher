@@ -142,7 +142,7 @@ public class ShutdownEndpointTests : IDisposable
         for (int i = 0; i < 5; i++)
         {
             healthTasks.Add(client.GetAsync(healthUrl, TestContext.Current.CancellationToken));
-            await Task.Delay(50, TestContext.Current.CancellationToken);
+            await Task.Delay(E2EConstants.Delays.ShortCoordinationMs, TestContext.Current.CancellationToken);
         }
 
         // Trigger shutdown while requests are in flight

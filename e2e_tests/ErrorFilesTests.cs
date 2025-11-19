@@ -9,6 +9,7 @@ using OpenTelemetry.Proto.Resource.V1;
 using OpenTelemetry.Proto.Trace.V1;
 using OpenTelWatcher.Tests.E2E;
 using System.Net;
+using System.Net.Http.Json;
 using System.Text.Json;
 using Xunit;
 
@@ -180,7 +181,7 @@ public class ErrorFilesTests
         response.StatusCode.Should().Be(HttpStatusCode.OK);
 
         // Wait a moment to ensure any file write would have occurred
-        await Task.Delay(200, TestContext.Current.CancellationToken);
+        await Task.Delay(E2EConstants.Delays.FileWriteSettlingMs, TestContext.Current.CancellationToken);
 
         // No new error files should be created
         var errorFilesAfter = Directory.GetFiles(outputDirectory, "traces.*.errors.ndjson").Length;
@@ -207,7 +208,7 @@ public class ErrorFilesTests
         response.StatusCode.Should().Be(HttpStatusCode.OK);
 
         // Wait a moment to ensure any file write would have occurred
-        await Task.Delay(200, TestContext.Current.CancellationToken);
+        await Task.Delay(E2EConstants.Delays.FileWriteSettlingMs, TestContext.Current.CancellationToken);
 
         // No new error files should be created
         var errorFilesAfter = Directory.GetFiles(outputDirectory, "logs.*.errors.ndjson").Length;

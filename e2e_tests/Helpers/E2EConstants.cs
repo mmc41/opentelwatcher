@@ -66,6 +66,31 @@ public static class E2EConstants
     }
 
     /// <summary>
+    /// Delay values in milliseconds for test timing coordination.
+    /// Used to ensure proper sequencing of operations (e.g., file timestamps, async processing).
+    /// </summary>
+    public static class Delays
+    {
+        /// <summary>Minimum delay to ensure different file timestamps (10ms)</summary>
+        public const int TimestampDifferentiationMs = 10;
+
+        /// <summary>Short delay for concurrent operation coordination (50ms)</summary>
+        public const int ShortCoordinationMs = 50;
+
+        /// <summary>Standard polling/processing interval (100ms)</summary>
+        public const int StandardPollingMs = 100;
+
+        /// <summary>File write settling time before verification (200ms)</summary>
+        public const int FileWriteSettlingMs = 200;
+
+        /// <summary>Processing completion wait time (500ms)</summary>
+        public const int ProcessingCompletionMs = 500;
+
+        /// <summary>Server health check polling interval (1000ms)</summary>
+        public const int HealthCheckPollingMs = 1000;
+    }
+
+    /// <summary>
     /// Query string parameters for API endpoints.
     /// </summary>
     public static class QueryParams

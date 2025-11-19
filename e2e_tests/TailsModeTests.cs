@@ -116,8 +116,16 @@ public class TailsModeTests : IAsyncLifetime, IDisposable
         normalLogResponse.StatusCode.Should().Be(HttpStatusCode.OK, "normal logs should be accepted");
         errorLogResponse.StatusCode.Should().Be(HttpStatusCode.OK, "error logs should be accepted");
 
-        // Give a moment for files to be written
-        await Task.Delay(1000, TestContext.Current.CancellationToken);
+        // Wait for files to be written by polling
+        var filesWritten = await PollingHelpers.WaitForConditionAsync(
+            condition: () => Directory.GetFiles(_tempDir, "*.ndjson", SearchOption.AllDirectories).Length > 0,
+            timeoutMs: 5000,
+            pollingIntervalMs: 100,
+            cancellationToken: TestContext.Current.CancellationToken,
+            logger: _logger,
+            conditionDescription: "telemetry files to be written");
+
+        filesWritten.Should().BeTrue("files should be written within timeout");
 
         // Verify files are still written to disk (tails is additional output, not replacement)
         var files = Directory.GetFiles(_tempDir, "*.ndjson", SearchOption.AllDirectories);
@@ -220,10 +228,10 @@ public class TailsModeTests : IAsyncLifetime, IDisposable
                 // Ignore and retry
             }
 
-            await Task.Delay(500);
+            await Task.Delay(E2EConstants.Delays.ProcessingCompletionMs);
         }
 
-        throw new InvalidOperationException($"Server did not become ready within {maxAttempts * 500}ms");
+        throw new InvalidOperationException($"Server did not become ready within {maxAttempts * E2EConstants.Delays.ProcessingCompletionMs}ms");
     }
 
     private (string fileName, string solutionRoot) GetDotnetExecutableInfo()
@@ -258,7 +266,14 @@ public class TailsModeTests : IAsyncLifetime, IDisposable
                 if (_client != null)
                 {
                     await _client.PostAsync("/api/stop", null, TestContext.Current.CancellationToken);
-                    await Task.Delay(2000); // Give it time to shut down gracefully
+
+                    // Wait for process to exit by polling
+                    await PollingHelpers.WaitForProcessExitAsync(
+                        process: _watcherProcess,
+                        timeoutMs: 5000,
+                        pollingIntervalMs: 100,
+                        cancellationToken: TestContext.Current.CancellationToken,
+                        logger: _logger);
                 }
             }
             catch
@@ -269,7 +284,14 @@ public class TailsModeTests : IAsyncLifetime, IDisposable
             if (!_watcherProcess.HasExited)
             {
                 _watcherProcess.Kill();
-                await Task.Delay(500);
+
+                // Wait for process to exit after kill by polling
+                await PollingHelpers.WaitForProcessExitAsync(
+                    process: _watcherProcess,
+                    timeoutMs: 2000,
+                    pollingIntervalMs: 100,
+                    cancellationToken: TestContext.Current.CancellationToken,
+                    logger: _logger);
             }
         }
 

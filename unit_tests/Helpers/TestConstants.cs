@@ -73,6 +73,16 @@ public static class TestConstants
     }
 
     /// <summary>
+    /// Delay values in milliseconds for test timing coordination.
+    /// Used to ensure proper sequencing of operations (e.g., file timestamps).
+    /// </summary>
+    public static class Delays
+    {
+        /// <summary>Minimum delay to ensure different file timestamps (10ms)</summary>
+        public const int TimestampDifferentiationMs = 10;
+    }
+
+    /// <summary>
     /// Test file patterns and names.
     /// </summary>
     public static class FileNames

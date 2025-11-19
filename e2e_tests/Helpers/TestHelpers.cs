@@ -179,9 +179,6 @@ public static class TestHelpers
             throw new InvalidOperationException("Failed to start server process");
         }
 
-        // Give server time to start
-        await Task.Delay(2000);
-
         return process;
     }
 
@@ -227,7 +224,7 @@ public static class TestHelpers
                     attempt + 1, maxAttempts);
             }
 
-            await Task.Delay(1000);
+            await Task.Delay(E2EConstants.Delays.HealthCheckPollingMs);
         }
 
         var error = $"Server on port {port} did not become healthy within {maxAttempts} seconds";
@@ -256,7 +253,16 @@ public static class TestHelpers
                 // Instance is running - stop it
                 logger?.LogInformation("Instance found running on port {Port}, stopping it", port);
                 await StopServerOnPortAsync(port, logger);
-                await Task.Delay(2000); // Wait for shutdown
+
+                // Wait for server to stop by polling health endpoint (should return false)
+                await PollingHelpers.WaitForConditionAsync(
+                    conditionAsync: async () => !await CheckServerHealthAsync(port, logger),
+                    timeoutMs: 5000,
+                    pollingIntervalMs: 100,
+                    cancellationToken: default,
+                    logger: logger,
+                    conditionDescription: $"server on port {port} to stop");
+
                 logger?.LogDebug("Instance stopped on port {Port}", port);
             }
         }
@@ -334,7 +340,16 @@ public static class TestHelpers
         {
             using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
             await client.PostAsync($"http://{ApiConstants.Network.LocalhostIp}:{port}{E2EConstants.ApiEndpoints.Stop}", null);
-            await Task.Delay(2000); // Wait for shutdown
+
+            // Wait for server to stop by polling health endpoint (should return false)
+            await PollingHelpers.WaitForConditionAsync(
+                conditionAsync: async () => !await CheckServerHealthAsync(port, logger),
+                timeoutMs: 5000,
+                pollingIntervalMs: 100,
+                cancellationToken: default,
+                logger: logger,
+                conditionDescription: $"server on port {port} to stop");
+
             logger?.LogDebug("Stop request completed for port {Port}", port);
         }
         catch (Exception ex)

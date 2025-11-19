@@ -88,7 +88,7 @@ public class ClearApiTests
                 TestContext.Current.CancellationToken);
 
             // Wait a moment for file to be written
-            await Task.Delay(100, TestContext.Current.CancellationToken);
+            await Task.Delay(E2EConstants.Delays.StandardPollingMs, TestContext.Current.CancellationToken);
         }
 
         // Act - Clear files
