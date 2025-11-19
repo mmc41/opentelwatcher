@@ -51,9 +51,10 @@ public class StdoutReceiverTests
             receiver.WriteAsync(item, CancellationToken.None).Wait();
         });
 
-        // Assert
-        output.Should().StartWith(expectedColor);
-        output.Should().Contain("\x1b[0m"); // Reset color (platform-independent)
+        // Assert - Check that output contains the expected color code (may have other output from parallel tests)
+        output.Should().Contain(expectedColor, "output should contain the color code for {0}", signal);
+        output.Should().Contain("\x1b[0m"); // Reset color
+        output.Should().Contain($"[{signal.ToLowerString()}]", "output should contain signal type label");
     }
 
     [Theory]
@@ -71,8 +72,9 @@ public class StdoutReceiverTests
             receiver.WriteAsync(item, CancellationToken.None).Wait();
         });
 
-        // Assert
-        output.Should().StartWith("\x1b[31m"); // Red
+        // Assert - Check that output contains red color code and signal label
+        output.Should().Contain("\x1b[31m", "errors should be colored red");
+        output.Should().Contain($"[{signal.ToLowerString()}]", "output should contain signal type label");
     }
 
     [Fact]

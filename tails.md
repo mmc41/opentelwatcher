@@ -1,1069 +1,1031 @@
-# OpenTelWatcher Tail Command - Implementation Plan
+# Tails Feature Implementation Plan
 
-**Last Updated:** 2025-11-17 (Updated with latest testability improvements from commit a889ec8)
+## Overview
 
-## Executive Summary
+Add `--tails` and `--tails-filter-errors-only` options to the `start` command to output live telemetry to stdout with colorized, timestamped formatting.
 
-The `tail` command provides live, real-time visibility into telemetry data as it's captured by OpenTelWatcher. Similar to Unix `tail -f`, this command monitors the output directory and displays telemetry in human-readable format as files are written, enabling developers to see what their applications are sending without manually inspecting NDJSON files.
+**Prerequisites**: Refactoring plan (`refac.md`) must be completed and all tests passing.
 
-**Status:** Deferred from Quick Wins (simplyplan.md) - Advanced feature for future release
+**Note on SignalType**: The codebase uses `SignalType` enum (from `Configuration/SignalType.cs`) instead of strings:
+- `SignalType.Traces`, `SignalType.Logs`, `SignalType.Metrics`, `SignalType.Unspecified`
+- Extension methods: `ToLowerString()` converts to lowercase string ("traces", "logs", "metrics")
+- `TelemetryItem.Signal` is `SignalType` enum, not string
 
-**Effort Estimate:** 6-8 hours (Moderate complexity)
+## Feature Requirements
 
-**Priority:** Low (Nice-to-have for development workflows)
+### Command-Line Options
 
----
+1. **`--tails`**: Enable live telemetry output to stdout
+   - Outputs NDJSON format (always)
+   - Includes timestamp prefix: `[2025-01-19T12:00:00.123] [traces] {...}`
+   - Color-coded by SignalType and error status
+   - Writes to both stdout AND files (dual output)
+   - NOT compatible with `--daemon` mode
 
-## Motivation
+2. **`--tails-filter-errors-only`**: Reduce output to errors only
+   - Requires `--tails` to be enabled
+   - Uses same `ErrorsOnlyFilter` as error files
+   - Only outputs items where `IsError == true`
 
-### Problem Statement
+### UX Requirements
 
-**Current workflow for real-time telemetry visibility:**
-```bash
-# Manual, tedious approach
-while true; do
-  clear
-  ls -lh ./telemetry-data/*.ndjson
-  tail -1 ./telemetry-data/traces.*.ndjson | jq .
-  sleep 1
-done
+- **Startup Message**: Clear indication monitoring has started
+- **Graceful Shutdown**: Ctrl+C stops both tailing and server
+- **Colorization**:
+  - Errors: Red (`\x1b[31m`)
+  - SignalType.Traces (non-error): Cyan (`\x1b[36m`)
+  - SignalType.Logs (non-error): White (`\x1b[37m`)
+  - SignalType.Metrics (non-error): Green (`\x1b[32m`)
+- **Timestamp**: ISO 8601 format with milliseconds (`yyyy-MM-ddTHH:mm:ss.fff`)
+- **Format**: `[timestamp] [signal_lowercase] {ndjson}` (e.g., `[2025-01-19T12:00:00.123] [traces] {...}`)
+
+## Architecture
+
+Uses the pipeline architecture from refactoring:
+
+```
+OTLP Request → TelemetryPipeline
+                   ↓
+         Create TelemetryItem
+                   ↓
+   Registered Receivers:
+   1. FileReceiver (.ndjson) + AllSignalsFilter
+   2. FileReceiver (.errors.ndjson) + ErrorsOnlyFilter
+   3. StdoutReceiver + (AllSignalsFilter OR ErrorsOnlyFilter)  ← NEW
+                   ↓
+   [Colorized stdout output]
 ```
 
-**Pain points:**
-1. No built-in way to see telemetry arriving in real-time
-2. Developers must repeatedly check files manually
-3. Raw NDJSON is hard to read without processing
-4. "Is my app sending telemetry?" requires guesswork and file checking
-5. Debugging telemetry issues is slow (check files, parse JSON, repeat)
+## Implementation Steps (TDD)
 
-### Use Cases
+### Step 1: Implement StdoutReceiver (TDD)
 
-**1. Development Workflow**
-```bash
-# Terminal 1: Run application
-npm run dev
+#### Step 1.1: Write Tests First
 
-# Terminal 2: Watch telemetry live
-opentelwatcher tail --signal traces
-# See spans appear as application executes requests
-```
-
-**2. Debugging Telemetry Configuration**
-```bash
-# Quick verification: Is telemetry being sent?
-opentelwatcher tail
-# If nothing appears after triggering app operations → telemetry misconfigured
-```
-
-**3. Error Monitoring During Testing**
-```bash
-# Watch for errors in real-time
-opentelwatcher tail --errors-only
-# Immediately see any ERROR spans or logs as they occur
-```
-
-**4. Live Metric Observation**
-```bash
-# Monitor specific signal type
-opentelwatcher tail --signal metrics --format compact
-# See metrics being recorded in real-time
-```
-
----
-
-## Requirements
-
-### Functional Requirements
-
-**FR1: File Watching**
-- Monitor output directory for new and modified NDJSON files
-- Detect file creation, append operations, and file rotation
-- Support filtering by signal type (traces, logs, metrics)
-- Support error-only mode (*.errors.ndjson files)
-
-**FR2: Display Formats**
-- **Compact** (default): One-line summary per telemetry item
-- **Verbose**: Multi-line detailed view
-- **JSON**: Raw NDJSON output (for piping to other tools)
-
-**FR3: Signal-Specific Formatting**
-- **Traces**: Show span name, duration, status, trace ID
-- **Logs**: Show severity, message, timestamp
-- **Metrics**: Show metric name, value, unit
-
-**FR4: Options and Flags**
-- `--signal <type>` - Filter by signal (traces, logs, metrics)
-- `--errors-only` - Show only error telemetry
-- `--format <type>` - Output format (compact, verbose, json)
-- `--output-dir, -o <path>` - Directory to monitor (default: ./telemetry-data)
-- `--lines <n>` - Show last N entries from existing files then continue (like `tail -n`)
-- `--no-follow` - Display existing entries and exit (no live watching)
-
-**FR5: User Experience**
-- Clear indication that monitoring has started
-- Graceful shutdown on Ctrl+C
-- Colorized output for readability (errors in red, warnings in yellow)
-- Timestamp prefix for each entry
-- File rotation indicators ("==> New file: traces.*.ndjson <==")
-
-### Non-Functional Requirements
-
-**NFR1: Performance**
-- Minimal CPU usage while idle (FileSystemWatcher event-driven)
-- Handle high-throughput scenarios (100+ telemetry items/second)
-- No memory leaks during extended monitoring sessions
-
-**NFR2: Reliability**
-- Handle file locking scenarios (concurrent writes)
-- Gracefully handle file deletion during monitoring
-- No crashes on malformed NDJSON entries (skip and warn)
-
-**NFR3: Consistency**
-- Follow existing CLI patterns (System.CommandLine 2.0)
-- Reuse existing models and services where possible
-- Support `--json` output for programmatic usage
-
----
-
-## Architecture and Design
-
-### Component Overview
-
-```text
-┌─────────────────────────────────────────────────────────────┐
-│ TailCommand (CLI/Commands/TailCommand.cs)                   │
-│ - Parse options                                             │
-│ - Initialize TailService                                    │
-│ - Handle Ctrl+C gracefully                                  │
-└────────────────┬────────────────────────────────────────────┘
-                 │
-                 v
-┌─────────────────────────────────────────────────────────────┐
-│ ITailService (Services/Interfaces/ITailService.cs)          │
-│ - FileSystemWatcher orchestration                           │
-│ - File state tracking (byte offsets for each file)          │
-│ - Event dispatching (OnNewEntry)                            │
-└────────────────┬────────────────────────────────────────────┘
-                 │
-                 v
-┌─────────────────────────────────────────────────────────────┐
-│ TelemetryParser (Utilities/TelemetryParser.cs)              │
-│ - Parse NDJSON to TelemetryEntry models                     │
-│ - Extract signal type from filename                         │
-│ - Handle malformed JSON gracefully                          │
-└────────────────┬────────────────────────────────────────────┘
-                 │
-                 v
-┌─────────────────────────────────────────────────────────────┐
-│ TelemetryFormatter (Utilities/TelemetryFormatter.cs)        │
-│ - Format traces (span name, duration, status)               │
-│ - Format logs (severity, message)                           │
-│ - Format metrics (name, value, unit)                        │
-│ - Apply colorization and timestamps                         │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Data Flow
-
-```text
-1. File Change Event
-   ↓
-2. TailService reads new bytes (from last offset)
-   ↓
-3. TelemetryParser parses NDJSON lines
-   ↓
-4. TelemetryFormatter formats for display
-   ↓
-5. Console.WriteLine (colorized output)
-```
-
-### File State Tracking
-
-Each monitored file requires state tracking:
+**Create**: `unit_tests/Services/Receivers/StdoutReceiverTests.cs`
 
 ```csharp
-// Services/TailService.cs
-private class FileState
-{
-    public string FilePath { get; set; }
-    public long LastReadPosition { get; set; }
-    public DateTime LastModified { get; set; }
-}
+using FluentAssertions;
+using Microsoft.Extensions.Logging.Abstractions;
+using OpenTelWatcher.Configuration;
+using OpenTelWatcher.Models;
+using OpenTelWatcher.Services.Receivers;
+using Xunit;
 
-private readonly Dictionary<string, FileState> _fileStates = new();
-```
+namespace OpenTelWatcher.Tests.Services.Receivers;
 
-### Handling File Rotation
-
-OpenTelWatcher creates new files when rotation threshold is met:
-
-```text
-traces.20251116_143022_456.ndjson  ← Currently writing
-traces.20251116_150015_789.ndjson  ← New file created (rotation)
-```
-
-TailService must:
-1. Detect new file creation via FileSystemWatcher.Created event
-2. Add new file to tracking state
-3. Display file rotation indicator
-4. Continue monitoring both files
-
----
-
-## Implementation Plan (TDD Approach)
-
-### TDD Process Overview
-
-Follow the **Red-Green-Refactor** cycle for each component:
-1. **🔴 RED**: Write a failing test first
-2. **🟢 GREEN**: Write minimal code to pass the test
-3. **🔵 REFACTOR**: Improve code while keeping tests green
-4. **↻ REPEAT**: Continue with next test
-
-**Development Workflow:**
-```bash
-# For each feature:
-# 1. Write failing test
-dotnet test unit_tests/<TestFile>.cs
-
-# 2. Implement minimum code to pass
-# 3. Verify test passes
-dotnet test unit_tests/<TestFile>.cs
-
-# 4. Refactor and verify still green
-# 5. Move to next test
-```
-
----
-
-### Phase 1: TelemetryEntry Model & Parser (TDD) (2-3 hours)
-
-**Goal:** Parse NDJSON telemetry files into structured entries
-
-#### 🔴 RED - Step 1.1: Write Failing Test for TelemetryEntry Model
-
-Create test **before** the model exists:
-
-**File:** `unit_tests/Utilities/TelemetryParserTests.cs`
-```csharp
-public class TelemetryParserTests
+public class StdoutReceiverTests
 {
     [Fact]
-    public void ParseLine_ValidTraceJson_ReturnsTelemetryEntry()
+    public async Task WriteAsync_FormatsOutput_WithTimestampAndSignal()
     {
-        // Arrange - Use TestBuilders for protobuf test data
-        var traceRequest = TestBuilders.CreateExportTraceServiceRequest(
-            spanName: "GET /api/users",
-            durationNanos: 124_000_000);
-        var json = TestBuilders.ToJson(traceRequest);
-        var fileName = $"{TestConstants.Signals.Traces}.20251116_143022_456.ndjson";
+        // Arrange
+        var receiver = new StdoutReceiver(NullLogger<StdoutReceiver>.Instance);
+        var timestamp = new DateTimeOffset(2025, 1, 19, 12, 30, 45, 123, TimeSpan.Zero);
+        var item = new TelemetryItem(
+            SignalType.Traces,
+            "{\"traceId\":\"abc123\"}\n",
+            false,
+            timestamp);
 
-        // Act
-        var entry = TelemetryParser.ParseLine(json, fileName);
+        var output = CaptureConsoleOutput(() =>
+        {
+            receiver.WriteAsync(item, CancellationToken.None).Wait();
+        });
 
         // Assert
-        entry.Should().NotBeNull();
-        entry!.SignalType.Should().Be(SignalType.Traces);
-        entry.SpanName.Should().Be("GET /api/users");
-        entry.DurationMs.Should().Be(124);
+        output.Should().Contain("[2025-01-19T12:30:45.123]");
+        output.Should().Contain("[traces]");
+        output.Should().Contain("{\"traceId\":\"abc123\"}");
     }
-}
-```
 
-**Run test:** `dotnet test unit_tests/Utilities/TelemetryParserTests.cs` → **FAILS** (TelemetryParser doesn't exist)
-
-#### 🟢 GREEN - Step 1.2: Create Minimal TelemetryEntry Model
-
-Write minimum code to compile:
-
-**File:** `opentelwatcher/Models/TelemetryEntry.cs`
-```csharp
-public enum SignalType { Traces, Logs, Metrics, Unknown }
-
-public record TelemetryEntry
-{
-    public SignalType SignalType { get; init; }
-    public DateTime Timestamp { get; init; }
-    public bool IsError { get; init; }
-    public string? SpanName { get; init; }
-    public long? DurationMs { get; init; }
-    public string? TraceId { get; init; }
-    public string? SpanStatus { get; init; }
-    public string? LogMessage { get; init; }
-    public string? LogSeverity { get; init; }
-    public string? MetricName { get; init; }
-    public double? MetricValue { get; init; }
-    public string? MetricUnit { get; init; }
-}
-```
-
-#### 🟢 GREEN - Step 1.3: Create Minimal TelemetryParser
-
-**File:** `opentelwatcher/Utilities/TelemetryParser.cs`
-```csharp
-public static class TelemetryParser
-{
-    public static TelemetryEntry? ParseLine(string json, string fileName)
+    [Theory]
+    [InlineData(SignalType.Traces, false, "\x1b[36m")] // Cyan
+    [InlineData(SignalType.Logs, false, "\x1b[37m")]   // White
+    [InlineData(SignalType.Metrics, false, "\x1b[32m")] // Green
+    public async Task WriteAsync_ColorizesOutput_BySignalType(
+        SignalType signal,
+        bool isError,
+        string expectedColor)
     {
+        // Arrange
+        var receiver = new StdoutReceiver(NullLogger<StdoutReceiver>.Instance);
+        var item = new TelemetryItem(signal, "{}\n", isError, DateTimeOffset.UtcNow);
+
+        var output = CaptureConsoleOutput(() =>
+        {
+            receiver.WriteAsync(item, CancellationToken.None).Wait();
+        });
+
+        // Assert
+        output.Should().StartWith(expectedColor);
+        output.Should().EndWith("\x1b[0m\n"); // Reset color
+    }
+
+    [Theory]
+    [InlineData(SignalType.Traces)]
+    [InlineData(SignalType.Logs)]
+    [InlineData(SignalType.Metrics)]
+    public async Task WriteAsync_ColorizesErrors_InRed(SignalType signal)
+    {
+        // Arrange
+        var receiver = new StdoutReceiver(NullLogger<StdoutReceiver>.Instance);
+        var item = new TelemetryItem(signal, "{}\n", IsError: true, DateTimeOffset.UtcNow);
+
+        var output = CaptureConsoleOutput(() =>
+        {
+            receiver.WriteAsync(item, CancellationToken.None).Wait();
+        });
+
+        // Assert
+        output.Should().StartWith("\x1b[31m"); // Red
+    }
+
+    [Fact]
+    public async Task WriteAsync_PreservesRawNdjson_NoFormatting()
+    {
+        // Arrange
+        var receiver = new StdoutReceiver(NullLogger<StdoutReceiver>.Instance);
+        var complexJson = "{\"nested\":{\"array\":[1,2,3]},\"value\":\"test\"}\n";
+        var item = new TelemetryItem(SignalType.Traces, complexJson, false, DateTimeOffset.UtcNow);
+
+        var output = CaptureConsoleOutput(() =>
+        {
+            receiver.WriteAsync(item, CancellationToken.None).Wait();
+        });
+
+        // Assert - JSON should be preserved exactly (not prettified)
+        output.Should().Contain("{\"nested\":{\"array\":[1,2,3]},\"value\":\"test\"}");
+    }
+
+    [Fact]
+    public async Task WriteAsync_ThreadSafe_ConcurrentWrites()
+    {
+        // Arrange
+        var receiver = new StdoutReceiver(NullLogger<StdoutReceiver>.Instance);
+        var items = Enumerable.Range(0, 100).Select(i => new TelemetryItem(
+            SignalType.Traces,
+            $"{{\"id\":{i}}}\n",
+            false,
+            DateTimeOffset.UtcNow)).ToList();
+
+        // Act
+        var outputs = new ConcurrentBag<string>();
+        await Parallel.ForEachAsync(items, async (item, ct) =>
+        {
+            var output = CaptureConsoleOutput(() =>
+            {
+                receiver.WriteAsync(item, ct).Wait();
+            });
+            outputs.Add(output);
+        });
+
+        // Assert - all writes completed without garbled output
+        outputs.Should().HaveCount(100);
+        outputs.Should().OnlyContain(o => o.Contains("[traces]"));
+    }
+
+    [Fact]
+    public async Task WriteAsync_TrimsTrailingNewline_FromNdjson()
+    {
+        // Arrange
+        var receiver = new StdoutReceiver(NullLogger<StdoutReceiver>.Instance);
+        var item = new TelemetryItem(SignalType.Traces, "{\"id\":1}\n", false, DateTimeOffset.UtcNow);
+
+        var output = CaptureConsoleOutput(() =>
+        {
+            receiver.WriteAsync(item, CancellationToken.None).Wait();
+        });
+
+        // Assert - should not have double newline
+        output.Should().NotContain("}\n\n");
+    }
+
+    // Helper method
+    private string CaptureConsoleOutput(Action action)
+    {
+        var originalOut = Console.Out;
         try
         {
-            var signalType = ExtractSignalType(fileName);
-
-            return signalType switch
-            {
-                SignalType.Traces => ParseTraceEntry(json),
-                _ => null
-            };
+            using var writer = new StringWriter();
+            Console.SetOut(writer);
+            action();
+            return writer.ToString();
         }
-        catch (JsonException)
+        finally
         {
-            return null;
+            Console.SetOut(originalOut);
         }
     }
-
-    private static SignalType ExtractSignalType(string fileName)
-    {
-        if (fileName.StartsWith(TestConstants.Signals.Traces))
-            return SignalType.Traces;
-        return SignalType.Unknown;
-    }
-
-    private static TelemetryEntry ParseTraceEntry(string json)
-    {
-        var request = JsonSerializer.Deserialize<ExportTraceServiceRequest>(json);
-        var span = request?.ResourceSpans[0]?.ScopeSpans[0]?.Spans[0];
-
-        return new TelemetryEntry
-        {
-            SignalType = SignalType.Traces,
-            SpanName = span?.Name,
-            DurationMs = (long?)(span?.EndTimeUnixNano - span?.StartTimeUnixNano) / 1_000_000,
-            Timestamp = DateTime.UtcNow
-        };
-    }
 }
 ```
 
-**Run test:** `dotnet test unit_tests/Utilities/TelemetryParserTests.cs` → **PASSES**
+**Run Tests**: `dotnet test unit_tests/Services/Receivers/StdoutReceiverTests.cs` → ❌ Fails (class doesn't exist)
 
-#### 🔴 RED - Step 1.4: Add Test for Malformed JSON
+---
 
-```csharp
-[Fact]
-public void ParseLine_MalformedJson_ReturnsNull()
-{
-    // Arrange
-    var json = "{invalid json}";
-    var fileName = $"{TestConstants.Signals.Traces}.20251116_143022_456.ndjson";
+#### Step 1.2: Implement StdoutReceiver
 
-    // Act
-    var entry = TelemetryParser.ParseLine(json, fileName);
-
-    // Assert
-    entry.Should().BeNull();
-}
-```
-
-**Run test:** → **PASSES** (already handles JsonException)
-
-#### 🔴 RED - Step 1.5: Add Test for Log Parsing
+**Create**: `Services/Receivers/StdoutReceiver.cs`
 
 ```csharp
-[Fact]
-public void ParseLine_ValidLogJson_ReturnsTelemetryEntry()
+using OpenTelWatcher.Configuration;
+using OpenTelWatcher.Models;
+using OpenTelWatcher.Services.Interfaces;
+
+namespace OpenTelWatcher.Services.Receivers;
+
+/// <summary>
+/// Writes telemetry items to stdout with colorized, timestamped formatting.
+/// </summary>
+public sealed class StdoutReceiver : ITelemetryReceiver, IDisposable
 {
-    // Arrange
-    var logRequest = TestBuilders.CreateExportLogsServiceRequest(
-        message: "User logged in",
-        severity: "INFO");
-    var json = TestBuilders.ToJson(logRequest);
-    var fileName = $"{TestConstants.Signals.Logs}.20251116_143022_456.ndjson";
+    private readonly SemaphoreSlim _consoleLock = new(1, 1);
+    private readonly ILogger<StdoutReceiver> _logger;
 
-    // Act
-    var entry = TelemetryParser.ParseLine(json, fileName);
-
-    // Assert
-    entry.Should().NotBeNull();
-    entry!.SignalType.Should().Be(SignalType.Logs);
-    entry.LogMessage.Should().Be("User logged in");
-    entry.LogSeverity.Should().Be("INFO");
-}
-```
-
-**Run test:** → **FAILS** (ParseLogEntry not implemented)
-
-#### 🟢 GREEN - Step 1.6: Implement Log Parsing
-
-Add to `TelemetryParser.cs`:
-```csharp
-private static SignalType ExtractSignalType(string fileName)
-{
-    if (fileName.StartsWith(TestConstants.Signals.Traces))
-        return SignalType.Traces;
-    if (fileName.StartsWith(TestConstants.Signals.Logs))
-        return SignalType.Logs;
-    return SignalType.Unknown;
-}
-
-private static TelemetryEntry ParseLogEntry(string json)
-{
-    var request = JsonSerializer.Deserialize<ExportLogsServiceRequest>(json);
-    var log = request?.ResourceLogs[0]?.ScopeLogs[0]?.LogRecords[0];
-
-    return new TelemetryEntry
+    public StdoutReceiver(ILogger<StdoutReceiver> logger)
     {
-        SignalType = SignalType.Logs,
-        LogMessage = log?.Body?.StringValue,
-        LogSeverity = log?.SeverityText,
-        Timestamp = DateTime.UtcNow
-    };
-}
-```
-
-**Run test:** → **PASSES**
-
-#### 🔵 REFACTOR - Step 1.7: Extract Common Code
-
-Refactor parser to reduce duplication while keeping tests green.
-
-#### ↻ REPEAT - Step 1.8-1.10: Add Metrics Support
-
-Follow same Red-Green-Refactor cycle for metrics parsing.
-
-### Phase 2: TelemetryFormatter (TDD) (1-2 hours)
-
-**Goal:** Format telemetry entries for console display
-
-#### 🔴 RED - Step 2.1: Write Failing Test for Compact Format
-
-**File:** `unit_tests/Utilities/TelemetryFormatterTests.cs`
-```csharp
-public class TelemetryFormatterTests
-{
-    [Fact]
-    public void Format_Compact_TraceEntry_ReturnsExpectedFormat()
-    {
-        // Arrange
-        var testTime = new DateTime(2025, 11, 16, 14, 30, 22, 456, DateTimeKind.Utc);
-        var entry = new TelemetryEntry
-        {
-            SignalType = SignalType.Traces,
-            Timestamp = testTime,
-            SpanName = "GET /api/users",
-            DurationMs = 124,
-            SpanStatus = "OK",
-            IsError = false
-        };
-
-        // Act
-        var result = TelemetryFormatter.Format(entry, TailFormat.Compact);
-
-        // Assert
-        result.Should().Contain("14:30:22.456");
-        result.Should().Contain("TRACE");
-        result.Should().Contain("GET /api/users");
-        result.Should().Contain("124ms");
-        result.Should().Contain("OK");
-    }
-}
-```
-
-**Run test:** → **FAILS** (TelemetryFormatter doesn't exist)
-
-#### 🟢 GREEN - Step 2.2: Create Minimal TelemetryFormatter
-
-```csharp
-public static class TelemetryFormatter
-{
-    public static string Format(TelemetryEntry entry, TailFormat format)
-    {
-        return format switch
-        {
-            TailFormat.Compact => FormatCompact(entry),
-            _ => throw new NotImplementedException()
-        };
-    }
-
-    private static string FormatCompact(TelemetryEntry entry)
-    {
-        var timestamp = entry.Timestamp.ToString("HH:mm:ss.fff");
-        var prefix = entry.SignalType.ToString().ToUpper();
-
-        return entry.SignalType switch
-        {
-            SignalType.Traces => $"{timestamp} - {prefix}: {entry.SpanName} ({entry.DurationMs}ms, {entry.SpanStatus})",
-            _ => $"{timestamp} - UNKNOWN"
-        };
-    }
-}
-```
-
-**Run test:** → **PASSES**
-
-#### 🔴 RED - Step 2.3: Add Test for Error Colorization
-
-```csharp
-[Fact]
-public void Format_Compact_ErrorEntry_UsesRedColor()
-{
-    // Arrange
-    var entry = new TelemetryEntry
-    {
-        SignalType = SignalType.Traces,
-        Timestamp = DateTime.UtcNow,
-        SpanName = "GET /api/error",
-        IsError = true
-    };
-
-    // Act
-    var result = TelemetryFormatter.Format(entry, TailFormat.Compact);
-
-    // Assert
-    result.Should().Contain("\u001b[31m"); // ANSI red color
-    result.Should().Contain("ERROR");
-}
-```
-
-**Run test:** → **FAILS**
-
-#### 🟢 GREEN - Step 2.4: Add Error Colorization
-
-Update `FormatCompact`:
-```csharp
-private static string FormatCompact(TelemetryEntry entry)
-{
-    var timestamp = entry.Timestamp.ToString("HH:mm:ss.fff");
-    var prefix = entry.IsError ? "ERROR" : entry.SignalType.ToString().ToUpper();
-    var color = entry.IsError ? "\u001b[31m" : "\u001b[0m";
-    var reset = "\u001b[0m";
-
-    return entry.SignalType switch
-    {
-        SignalType.Traces => $"{timestamp} - {color}{prefix}{reset}: {entry.SpanName} ({entry.DurationMs}ms, {entry.SpanStatus})",
-        _ => $"{timestamp} - UNKNOWN"
-    };
-}
-```
-
-**Run test:** → **PASSES**
-
-#### ↻ REPEAT - Step 2.5-2.8: Add Verbose and JSON Formats
-
-Follow same Red-Green-Refactor cycle for verbose and JSON formats.
-
-### Phase 3: TailService & CLI Integration (TDD) (2-3 hours)
-
-**Goal:** Wire up file watching and CLI command
-
-#### 🔴 RED - Step 3.1: Write Failing Test for TailCommand
-
-**File:** `unit_tests/CLI/Commands/TailCommandTests.cs`
-```csharp
-public class TailCommandTests : FileBasedTestBase
-{
-    [Fact]
-    public async Task ExecuteAsync_CallsTailServiceWithCorrectOptions()
-    {
-        using var _ = new SlowTestDetector();
-
-        // Arrange
-        var mockTailService = new Mock<ITailService>();
-        var command = new TailCommand(mockTailService.Object);
-        var options = new TailOptions
-        {
-            Signal = TestConstants.Signals.Traces,
-            ErrorsOnly = true,
-            Format = TailFormat.Compact,
-            OutputDir = TestOutputDir
-        };
-
-        // Act
-        var result = await command.ExecuteAsync(options);
-
-        // Assert
-        mockTailService.Verify(s => s.MonitorAsync(
-            It.Is<TailOptions>(o =>
-                o.Signal == TestConstants.Signals.Traces &&
-                o.ErrorsOnly),
-            It.IsAny<Action<TelemetryEntry>>(),
-            It.IsAny<CancellationToken>()), Times.Once);
-    }
-}
-```
-
-**Run test:** → **FAILS** (TailCommand doesn't exist)
-
-#### 🟢 GREEN - Step 3.2: Create Minimal TailCommand
-
-```csharp
-public class TailCommand
-{
-    private readonly ITailService _tailService;
-
-    public TailCommand(ITailService tailService)
-    {
-        _tailService = tailService;
-    }
-
-    public async Task<CommandResult> ExecuteAsync(TailOptions options)
-    {
-        await _tailService.MonitorAsync(
-            options,
-            entry => { /* Callback - implemented later */ },
-            CancellationToken.None);
-
-        return new CommandResult(0, "Monitoring stopped");
-    }
-}
-```
-
-**Run test:** → **PASSES**
-
-#### 🔴 RED - Step 3.3: Write Test for TailService Interface
-
-**File:** `unit_tests/Services/TailServiceTests.cs`
-```csharp
-public class TailServiceTests : FileBasedTestBase
-{
-    [Fact]
-    public async Task MonitorAsync_WhenFileCreated_InvokesCallback()
-    {
-        using var _ = new SlowTestDetector();
-
-        // Arrange
-        var mockTimeProvider = new MockTimeProvider();
-        var logger = TestLoggerFactory.CreateLogger<TailService>();
-        var service = new TailService(mockTimeProvider, logger);
-
-        var callbackInvoked = false;
-        var options = new TailOptions { OutputDir = TestOutputDir };
-
-        // Act
-        var monitorTask = service.MonitorAsync(
-            options,
-            entry => { callbackInvoked = true; },
-            CancellationToken.None);
-
-        // Create test file
-        var testFile = Path.Combine(TestOutputDir, $"{TestConstants.Signals.Traces}.ndjson");
-        await File.WriteAllTextAsync(testFile, "test content");
-
-        await Task.Delay(500); // Allow file watcher to detect
-
-        // Assert
-        callbackInvoked.Should().BeTrue();
-    }
-}
-```
-
-**Run test:** → **FAILS** (TailService doesn't exist)
-
-#### 🟢 GREEN - Step 3.4: Create TailService Interface and Stub
-
-**File:** `opentelwatcher/Services/Interfaces/ITailService.cs`
-```csharp
-public interface ITailService
-{
-    Task MonitorAsync(
-        TailOptions options,
-        Action<TelemetryEntry> onEntry,
-        CancellationToken cancellationToken);
-}
-```
-
-**File:** `opentelwatcher/Services/TailService.cs`
-```csharp
-public class TailService : ITailService
-{
-    private readonly ITimeProvider _timeProvider;
-    private readonly ILogger<TailService> _logger;
-
-    public TailService(ITimeProvider timeProvider, ILogger<TailService> logger)
-    {
-        _timeProvider = timeProvider;
         _logger = logger;
     }
 
-    public async Task MonitorAsync(
-        TailOptions options,
-        Action<TelemetryEntry> onEntry,
-        CancellationToken cancellationToken)
+    public async Task WriteAsync(TelemetryItem item, CancellationToken cancellationToken)
     {
-        // Minimal implementation - use FileSystemWatcher
-        var watcher = new FileSystemWatcher(options.OutputDir);
-        watcher.Created += (s, e) => onEntry(new TelemetryEntry());
-        watcher.EnableRaisingEvents = true;
+        await _consoleLock.WaitAsync(cancellationToken);
+        try
+        {
+            var color = GetColor(item);
+            var timestamp = item.Timestamp.ToString("yyyy-MM-ddTHH:mm:ss.fff");
+            var ndjson = item.NdjsonLine.TrimEnd('\n');
+            var signalName = item.Signal.ToLowerString(); // Convert enum to lowercase string
+            var output = $"{color}[{timestamp}] [{signalName}] {ndjson}\x1b[0m";
 
-        await Task.Delay(Timeout.Infinite, cancellationToken);
+            Console.WriteLine(output);
+        }
+        finally
+        {
+            _consoleLock.Release();
+        }
+    }
+
+    private static string GetColor(TelemetryItem item)
+    {
+        // Errors always red, regardless of signal type
+        if (item.IsError)
+        {
+            return "\x1b[31m"; // Red
+        }
+
+        // Color by signal type (using enum)
+        return item.Signal switch
+        {
+            SignalType.Traces => "\x1b[36m",  // Cyan
+            SignalType.Logs => "\x1b[37m",    // White
+            SignalType.Metrics => "\x1b[32m", // Green
+            _ => "\x1b[37m"                   // Default: White (for Unspecified)
+        };
+    }
+
+    public void Dispose()
+    {
+        _consoleLock.Dispose();
     }
 }
 ```
 
-**Run test:** → **PASSES** (basic implementation works)
+**Run Tests**: `dotnet test unit_tests/Services/Receivers/StdoutReceiverTests.cs` → ✅ Passes
 
-#### 🔵 REFACTOR - Step 3.5-3.8: Enhance TailService
+---
 
-- Add file state tracking
-- Implement file reading from last position
-- Add NDJSON parsing integration
-- Handle file rotation
+### Step 2: Update CLI Options (TDD)
 
-#### ↻ REPEAT - Step 3.9: Register CLI Command
+#### Step 2.1: Add Options to CommandOptions Model
 
-Add command registration to CliApplication (no test needed for System.CommandLine wiring)
+**Modify**: `CLI/Models/CommandModels.cs`
 
-### Phase 4: E2E Testing & Polish (1-2 hours)
-
-**Goal:** Validate end-to-end behavior with real file system operations
-
-#### Step 4.1: Write E2E Test for File Watching
-
-**File:** `e2e_tests/CLI/TailCommandTests.cs`
 ```csharp
-public class TailCommandTests : FileBasedTestBase
+public sealed record CommandOptions
+{
+    public int? Port { get; init; } = DefaultPorts.Otlp;
+    public string OutputDirectory { get; init; } = "./telemetry-data";
+    public LogLevel LogLevel { get; init; } = LogLevel.Information;
+    public bool Daemon { get; init; } = false;
+    public bool Silent { get; init; } = false;
+    public bool Verbose { get; init; } = false;
+
+    // NEW: Tails options
+    public bool Tails { get; init; } = false;
+    public bool TailsFilterErrorsOnly { get; init; } = false;
+}
+```
+
+---
+
+#### Step 2.2: Write Tests for CLI Validation
+
+**Create**: `unit_tests/CLI/TailsOptionValidationTests.cs`
+
+```csharp
+using FluentAssertions;
+using OpenTelWatcher.CLI;
+using Xunit;
+
+namespace OpenTelWatcher.Tests.CLI;
+
+public class TailsOptionValidationTests
 {
     [Fact]
-    public async Task TailCommand_WatchesNewFiles_DisplaysEntries()
+    public void StartCommand_RejectsInvalidCombination_TailsWithDaemon()
     {
-        using var _ = new SlowTestDetector();
+        // Arrange
+        var cliApp = new CliApplication();
+        var args = new[] { "start", "--tails", "--daemon" };
 
-        // Arrange: Start tail in background using TestHelpers
-        var arguments = $"tail --output-dir {TestOutputDir} --format compact";
-        var commandResult = TestHelpers.StartCommandInBackground(
-            "opentelwatcher",
-            arguments);
+        // Act
+        var result = cliApp.ParseArguments(args);
 
-        // Wait for monitoring to start using PollingHelpers
-        await PollingHelpers.WaitForConditionAsync(
-            () => commandResult.StandardOutput.Length > 0,
-            timeout: E2EConstants.Timeouts.CommandStart,
-            interval: E2EConstants.PollingIntervals.Fast);
-
-        // Act: Create telemetry file with realistic OTLP data
-        var traceRequest = ProtobufBuilders.CreateTraceRequest(
-            spanName: "GET /api/users",
-            durationNanos: 124_000_000);
-        var json = ProtobufBuilders.ToJson(traceRequest);
-
-        var traceFile = Path.Combine(TestOutputDir, "traces.20251116_143022_456.ndjson");
-        await File.WriteAllTextAsync(traceFile, json + "\n");
-
-        // Wait for file to be processed using PollingHelpers
-        await PollingHelpers.WaitForConditionAsync(
-            () => commandResult.StandardOutput.ToString().Contains("TRACE"),
-            timeout: E2EConstants.Timeouts.FileProcessing,
-            interval: E2EConstants.PollingIntervals.Medium);
-
-        // Assert: Check output contains formatted entry
-        var output = commandResult.StandardOutput.ToString();
-        output.Should().Contain("TRACE:");
-        output.Should().Contain("GET /api/users");
-        output.Should().Contain("124ms");
-
-        // Cleanup
-        commandResult.Process.Kill();
-        await commandResult.Process.WaitForExitAsync();
+        // Assert
+        result.Should().NotBe(0); // Error exit code
+        // Verify error message contains appropriate text
     }
 
     [Fact]
-    public async Task TailCommand_WithErrorsOnly_FiltersCorrectly()
+    public void StartCommand_RejectsInvalidCombination_TailsFilterWithoutTails()
     {
-        // Test --errors-only flag filters out non-error entries
+        // Arrange
+        var cliApp = new CliApplication();
+        var args = new[] { "start", "--tails-filter-errors-only" };
+
+        // Act
+        var result = cliApp.ParseArguments(args);
+
+        // Assert
+        result.Should().NotBe(0); // Error exit code
     }
 
     [Fact]
-    public async Task TailCommand_WithSignalFilter_ShowsOnlyMatchingSignal()
+    public void StartCommand_AcceptsValidCombination_TailsWithErrorsOnly()
     {
-        // Test --signal flag filters by signal type
+        // Arrange
+        var cliApp = new CliApplication();
+        var args = new[] { "start", "--tails", "--tails-filter-errors-only" };
+
+        // Act
+        var result = cliApp.ParseArguments(args);
+
+        // Assert
+        result.Should().Be(0); // Success (validation passes)
+    }
+
+    [Fact]
+    public void StartCommand_AcceptsValidCombination_TailsAlone()
+    {
+        // Arrange
+        var cliApp = new CliApplication();
+        var args = new[] { "start", "--tails" };
+
+        // Act
+        var result = cliApp.ParseArguments(args);
+
+        // Assert
+        result.Should().Be(0); // Success
     }
 }
 ```
 
-#### Step 4.2: Manual Testing & Polish
+**Run Tests**: `dotnet test unit_tests/CLI/TailsOptionValidationTests.cs` → ❌ Fails
 
-- Test with real OpenTelemetry applications
-- Verify colorization in terminal
-- Test Ctrl+C graceful shutdown
-- Test file rotation scenarios
-- Performance test with high throughput
+---
 
-#### Step 4.3: CLI Registration
+#### Step 2.3: Implement CLI Options and Validators
 
-**File:** `opentelwatcher/CLI/CliApplication.cs`
+**Modify**: `CLI/CliApplication.cs` - `BuildStartCommand()`
+
+Add option definitions:
+
 ```csharp
-var tailCommand = new Command("tail", "Monitor telemetry files in real-time");
-
-var signalOption = new Option<string?>(
-    "--signal",
-    "Filter by signal type (traces, logs, metrics)");
-tailCommand.AddOption(signalOption);
-
-var errorsOnlyOption = new Option<bool>(
-    "--errors-only",
-    "Show only error telemetry");
-tailCommand.AddOption(errorsOnlyOption);
-
-var formatOption = new Option<TailFormat>(
-    "--format",
-    getDefaultValue: () => TailFormat.Compact,
-    "Output format (compact, verbose, json)");
-tailCommand.AddOption(formatOption);
-
-var outputDirOption = new Option<string>(
-    aliases: new[] { "--output-dir", "-o" },
-    getDefaultValue: () => "./telemetry-data",
-    "Directory to monitor");
-tailCommand.AddOption(outputDirOption);
-
-var linesOption = new Option<int?>(
-    "--lines",
-    "Show last N entries from existing files before monitoring");
-tailCommand.AddOption(linesOption);
-
-var noFollowOption = new Option<bool>(
-    "--no-follow",
-    "Display existing entries and exit (do not monitor)");
-tailCommand.AddOption(noFollowOption);
-
-tailCommand.SetHandler(async (signal, errorsOnly, format, outputDir, lines, noFollow) =>
+var tailsOption = new Option<bool>("--tails")
 {
-    var options = new TailOptions
+    Description = "Output live telemetry to stdout in addition to files",
+    DefaultValueFactory = _ => false
+};
+
+var tailsFilterErrorsOnlyOption = new Option<bool>("--tails-filter-errors-only")
+{
+    Description = "Only output errors when using --tails (requires --tails)",
+    DefaultValueFactory = _ => false
+};
+
+startCommand.Add(tailsOption);
+startCommand.Add(tailsFilterErrorsOnlyOption);
+```
+
+Add validators to existing validation block:
+
+```csharp
+startCommand.Validators.Add(result =>
+{
+    var daemon = result.GetValue(daemonOption);
+    var tails = result.GetValue(tailsOption);
+    var tailsFilterErrorsOnly = result.GetValue(tailsFilterErrorsOnlyOption);
+
+    // Validate --tails not used with --daemon
+    if (tails && daemon)
     {
-        Signal = signal,
-        ErrorsOnly = errorsOnly,
-        Format = format,
-        OutputDir = outputDir,
-        Lines = lines,
-        NoFollow = noFollow
+        result.AddError("Cannot use --tails with --daemon. Tails mode requires foreground operation.");
+    }
+
+    // Validate --tails-filter-errors-only requires --tails
+    if (tailsFilterErrorsOnly && !tails)
+    {
+        result.AddError("Cannot use --tails-filter-errors-only without --tails.");
+    }
+});
+```
+
+Update command handler to extract values:
+
+```csharp
+startCommand.SetAction(parseResult =>
+{
+    var options = new CommandOptions
+    {
+        Port = parseResult.GetValue(portOption),
+        OutputDirectory = parseResult.GetValue(outputDirOption),
+        LogLevel = parseResult.GetValue(logLevelOption),
+        Daemon = parseResult.GetValue(daemonOption),
+        Silent = parseResult.GetValue(silentOption),
+        Verbose = parseResult.GetValue(verboseOption),
+        Tails = parseResult.GetValue(tailsOption),
+        TailsFilterErrorsOnly = parseResult.GetValue(tailsFilterErrorsOnlyOption)
     };
 
-    var tailService = serviceProvider.GetRequiredService<ITailService>();
-    var command = new TailCommand(tailService);
-    var result = await command.ExecuteAsync(options);
-    Environment.ExitCode = result.ExitCode;
-},
-signalOption, errorsOnlyOption, formatOption, outputDirOption, linesOption, noFollowOption);
+    // ... execute StartCommand
+});
+```
 
-rootCommand.AddCommand(tailCommand);
+**Run Tests**: `dotnet test unit_tests/CLI/TailsOptionValidationTests.cs` → ✅ Passes
+
+---
+
+### Step 3: Update ServerOptions
+
+**Modify**: `Hosting/ServerOptions.cs`
+
+```csharp
+public sealed record ServerOptions
+{
+    public int Port { get; init; }
+    public string OutputDirectory { get; init; } = "./telemetry-data";
+    public LogLevel LogLevel { get; init; } = LogLevel.Information;
+
+    // NEW: Tails options
+    public bool EnableTails { get; init; } = false;
+    public bool TailsFilterErrorsOnly { get; init; } = false;
+}
+```
+
+**Modify**: `CLI/Commands/StartCommand.cs` - Pass options to ServerOptions
+
+```csharp
+var serverOptions = new ServerOptions
+{
+    Port = options.Port ?? DefaultPorts.Otlp,
+    OutputDirectory = options.OutputDirectory,
+    LogLevel = options.LogLevel,
+    EnableTails = options.Tails,
+    TailsFilterErrorsOnly = options.TailsFilterErrorsOnly
+};
 ```
 
 ---
 
-## Testing Strategy
+### Step 4: Register StdoutReceiver Conditionally
 
-### Testability Improvements (Latest Commit)
+**Modify**: `Hosting/WebApplicationHost.cs` - `ConfigureServices()`
 
-The tail command implementation will leverage the latest testability enhancements:
+Add to pipeline configuration:
 
-**Test Infrastructure:**
-- **FileBasedTestBase** - Automatic temp directory creation and cleanup
-- **TestBuilders** - Factory methods for Options, Protobuf messages, and test data
-- **TestConstants** - Centralized constants (ports, PIDs, file sizes, signals, timeouts)
-- **SlowTestDetector** - Automatic detection of slow-running tests (>2s warning, >5s error)
+```csharp
+builder.Services.AddSingleton<ITelemetryPipeline>(sp =>
+{
+    var pipeline = new TelemetryPipeline(
+        sp.GetRequiredService<IProtobufJsonSerializer>(),
+        sp.GetRequiredService<IErrorDetectionService>(),
+        sp.GetRequiredService<ITimeProvider>(),
+        sp.GetRequiredService<ILogger<TelemetryPipeline>>());
 
-**Service Abstractions:**
-- **ITimeProvider** - Testable timestamps (use instead of DateTime.UtcNow)
-- **IProcessProvider** - Testable process operations (if needed)
-- **IEnvironment** - Testable environment variables (if needed)
+    // Create filters
+    var allSignalsFilter = new AllSignalsFilter();
+    var errorsOnlyFilter = new ErrorsOnlyFilter();
 
-**E2E Helpers:**
-- **E2EConstants** - Standardized timeouts, polling intervals, retry counts
-- **PollingHelpers** - Polling utilities with configurable timeouts
-- **ProtobufBuilders** - Realistic OTLP telemetry data generation
-- **PortAllocator** - Automatic port allocation for concurrent tests
+    // Normal files: all signals → .ndjson
+    var normalFileReceiver = new FileReceiver(
+        sp.GetRequiredService<IFileRotationService>(),
+        sp.GetRequiredService<IDiskSpaceChecker>(),
+        options.OutputDirectory,
+        ".ndjson",
+        sp.GetRequiredService<ILogger<FileReceiver>>());
+    pipeline.RegisterReceiver(normalFileReceiver, allSignalsFilter);
 
-### Unit Tests (Fast, Isolated)
+    // Error files: errors only → .errors.ndjson
+    var errorFileReceiver = new FileReceiver(
+        sp.GetRequiredService<IFileRotationService>(),
+        sp.GetRequiredService<IDiskSpaceChecker>(),
+        options.OutputDirectory,
+        ".errors.ndjson",
+        sp.GetRequiredService<ILogger<FileReceiver>>());
+    pipeline.RegisterReceiver(errorFileReceiver, errorsOnlyFilter);
 
-1. **TelemetryParser**: Parse valid/invalid NDJSON for all signal types (use ProtobufBuilders)
-2. **TelemetryFormatter**: Verify all format modes (compact, verbose, json)
-3. **TailCommand**: Verify options passed to TailService correctly (use TestConstants)
-4. **TailService (mocked dependencies)**: Verify file state tracking logic (use ITimeProvider mock)
+    // Stdout receiver: conditional based on options (NEW)
+    if (options.EnableTails)
+    {
+        var stdoutReceiver = new StdoutReceiver(
+            sp.GetRequiredService<ILogger<StdoutReceiver>>());
 
-### E2E Tests (Real Scenarios)
+        // Register with single filter (multiple filters supported via params)
+        if (options.TailsFilterErrorsOnly)
+        {
+            pipeline.RegisterReceiver(stdoutReceiver, errorsOnlyFilter);
+        }
+        else
+        {
+            pipeline.RegisterReceiver(stdoutReceiver, allSignalsFilter);
+        }
 
-1. **File Watching**: Create new file with ProtobufBuilders, verify displayed (use PollingHelpers)
-2. **File Append**: Append to existing file, verify new entries displayed (use PollingHelpers)
-3. **File Rotation**: Create new file during monitoring, verify both monitored
-4. **Error Filtering**: Create error file with ProtobufBuilders, verify --errors-only filters correctly
-5. **Signal Filtering**: Create mixed signal files with ProtobufBuilders, verify --signal filters correctly
-6. **Graceful Shutdown**: Send Ctrl+C using TestHelpers, verify clean exit
-7. **Performance**: High throughput test (100+ items/second) with SlowTestDetector
+        // Future example: Multiple filters (errors from traces only)
+        // pipeline.RegisterReceiver(stdoutReceiver, errorsOnlyFilter, new SignalTypeFilter("traces"));
+    }
 
-### Manual Testing Checklist
-
-- [ ] Start watcher, trigger app operations, verify telemetry appears
-- [ ] Test with high throughput (100+ items/second)
-- [ ] Test with all format modes (compact, verbose, json)
-- [ ] Test with file rotation scenarios
-- [ ] Test --lines option shows historical entries
-- [ ] Test --no-follow exits after displaying existing entries
-- [ ] Test error colorization in terminal
-- [ ] Test Ctrl+C graceful shutdown
+    return pipeline;
+});
+```
 
 ---
 
-## Documentation Updates
+### Step 5: Add UX Messages
 
-### README.md
+**Modify**: `CLI/Commands/StartCommand.cs`
 
-Add tail command to CLI examples section:
+Update `StartServerNormalModeAsync()`:
+
+```csharp
+private async Task<CommandResult> StartServerNormalModeAsync(
+    CommandOptions options,
+    ServerOptions serverOptions,
+    CancellationToken cancellationToken)
+{
+    // Display startup banner if tails enabled
+    if (options.Tails)
+    {
+        var filterMode = options.TailsFilterErrorsOnly ? "(errors only)" : "(all signals)";
+        Console.WriteLine($"🔍 Monitoring telemetry output {filterMode}");
+        Console.WriteLine("   Press Ctrl+C to stop...\n");
+    }
+
+    // Start server (blocks until shutdown)
+    var exitCode = await _webHost.RunAsync(serverOptions, cancellationToken);
+
+    // Display shutdown message if tails enabled
+    if (options.Tails)
+    {
+        Console.WriteLine("\n✓ Monitoring stopped");
+    }
+
+    return exitCode == 0
+        ? CommandResult.Success("Server stopped gracefully")
+        : CommandResult.SystemError($"Server exited with code {exitCode}");
+}
+```
+
+---
+
+### Step 6: Update Existing Tests (if needed)
+
+**Check for existing tests that might be affected**:
+```bash
+grep -r "StartCommand\|start.*--" e2e_tests/ unit_tests/ --include="*.cs"
+```
+
+**Potential updates**:
+- Tests that validate `StartCommand` CLI options may need to verify new `--tails` options exist
+- Tests that check for invalid option combinations should include new validation rules
+
+**Example updates**:
+
+If `unit_tests/CLI/StartCommandValidationTests.cs` exists:
+- Add test: `StartCommand_RejectsTailsWithDaemon()`
+- Add test: `StartCommand_RejectsTailsFilterWithoutTails()`
+
+If `e2e_tests/CLI/StartCommandTests.cs` exists:
+- Verify existing tests still pass (should not be affected)
+
+**Verification**:
+```bash
+# Run existing tests to ensure no regressions
+dotnet test unit_tests/CLI/ --verbosity normal
+dotnet test e2e_tests/CLI/ --verbosity normal
+```
+
+---
+
+### Step 7: Write New E2E Tests
+
+**Create**: `e2e_tests/CLI/TailsModeTests.cs`
+
+```csharp
+using FluentAssertions;
+using OpenTelWatcher.Tests.Infrastructure;
+using System.Diagnostics;
+using Xunit;
+
+namespace OpenTelWatcher.E2ETests.CLI;
+
+public class TailsModeTests : FileBasedTestBase
+{
+    [Fact]
+    public async Task StartWithTails_OutputsNdjsonToStdout()
+    {
+        // Arrange
+        var port = TestPorts.GetNext();
+        var process = StartOpenTelWatcherProcess(
+            args: $"start --port {port} --output-dir {TestDirectory} --tails",
+            captureOutput: true);
+
+        await WaitForServerReady(port);
+
+        // Act - Send telemetry
+        await SendTracesRequest(port, CreateMockTracesData());
+        await Task.Delay(500); // Allow time for processing
+
+        // Assert - Check stdout contains NDJSON
+        var output = process.StandardOutput.ReadToEnd();
+        output.Should().Contain("[traces]");
+        output.Should().Contain("{\""); // JSON content
+        output.Should().Contain("traceId");
+
+        // Cleanup
+        process.Kill();
+        process.WaitForExit();
+    }
+
+    [Fact]
+    public async Task StartWithTailsErrorsOnly_OutputsOnlyErrors()
+    {
+        // Arrange
+        var port = TestPorts.GetNext();
+        var process = StartOpenTelWatcherProcess(
+            args: $"start --port {port} --output-dir {TestDirectory} --tails --tails-filter-errors-only",
+            captureOutput: true);
+
+        await WaitForServerReady(port);
+
+        // Act - Send normal trace and error trace
+        await SendTracesRequest(port, CreateNormalTrace());
+        await SendTracesRequest(port, CreateErrorTrace());
+        await Task.Delay(500);
+
+        // Assert - Only error trace in stdout
+        var output = process.StandardOutput.ReadToEnd();
+        output.Should().NotContain("normalTraceId");
+        output.Should().Contain("errorTraceId");
+
+        // Cleanup
+        process.Kill();
+        process.WaitForExit();
+    }
+
+    [Fact]
+    public async Task StartWithTails_StillWritesFilesToDisk()
+    {
+        // Arrange
+        var port = TestPorts.GetNext();
+        var process = StartOpenTelWatcherProcess(
+            args: $"start --port {port} --output-dir {TestDirectory} --tails",
+            captureOutput: true);
+
+        await WaitForServerReady(port);
+
+        // Act
+        await SendTracesRequest(port, CreateMockTracesData());
+        await Task.Delay(500);
+
+        // Assert - Files created
+        var files = Directory.GetFiles(TestDirectory, "traces.*.ndjson");
+        files.Should().NotBeEmpty();
+
+        // Cleanup
+        process.Kill();
+        process.WaitForExit();
+    }
+
+    [Fact]
+    public async Task StartWithTails_OutputContainsTimestamp()
+    {
+        // Arrange
+        var port = TestPorts.GetNext();
+        var process = StartOpenTelWatcherProcess(
+            args: $"start --port {port} --output-dir {TestDirectory} --tails",
+            captureOutput: true);
+
+        await WaitForServerReady(port);
+
+        // Act
+        await SendTracesRequest(port, CreateMockTracesData());
+        await Task.Delay(500);
+
+        // Assert - Timestamp format: [2025-01-19T12:00:00.123]
+        var output = process.StandardOutput.ReadToEnd();
+        output.Should().MatchRegex(@"\[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}\]");
+
+        // Cleanup
+        process.Kill();
+        process.WaitForExit();
+    }
+
+    [Fact]
+    public async Task StartWithTailsAndDaemon_ReturnsError()
+    {
+        // Arrange
+        var port = TestPorts.GetNext();
+
+        // Act
+        var result = await RunCliCommand($"start --port {port} --tails --daemon");
+
+        // Assert
+        result.ExitCode.Should().Be(1); // User error
+        result.StandardError.Should().Contain("Cannot use --tails with --daemon");
+    }
+
+    [Fact]
+    public async Task StartWithTailsFilterErrorsOnly_WithoutTails_ReturnsError()
+    {
+        // Arrange
+        var port = TestPorts.GetNext();
+
+        // Act
+        var result = await RunCliCommand($"start --port {port} --tails-filter-errors-only");
+
+        // Assert
+        result.ExitCode.Should().Be(1); // User error
+        result.StandardError.Should().Contain("Cannot use --tails-filter-errors-only without --tails");
+    }
+
+    [Fact]
+    public async Task StartWithTails_CtrlC_GracefullyShutdown()
+    {
+        // Arrange
+        var port = TestPorts.GetNext();
+        var process = StartOpenTelWatcherProcess(
+            args: $"start --port {port} --output-dir {TestDirectory} --tails",
+            captureOutput: true);
+
+        await WaitForServerReady(port);
+
+        // Act - Send Ctrl+C signal
+        process.StandardInput.Write('\x03'); // Ctrl+C
+        var exited = process.WaitForExit(5000);
+
+        // Assert
+        exited.Should().BeTrue("Process should exit gracefully");
+        process.ExitCode.Should().Be(0, "Should exit with success code");
+
+        var output = process.StandardOutput.ReadToEnd();
+        output.Should().Contain("✓ Monitoring stopped");
+    }
+
+    // Helper methods
+    private Process StartOpenTelWatcherProcess(string args, bool captureOutput)
+    {
+        var psi = new ProcessStartInfo
+        {
+            FileName = "dotnet",
+            Arguments = $"run --project opentelwatcher -- {args}",
+            RedirectStandardOutput = captureOutput,
+            RedirectStandardError = captureOutput,
+            RedirectStandardInput = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+
+        var process = Process.Start(psi);
+        return process;
+    }
+
+    private async Task WaitForServerReady(int port, int timeoutMs = 10000)
+    {
+        var client = new HttpClient();
+        var stopwatch = Stopwatch.StartNew();
+
+        while (stopwatch.ElapsedMilliseconds < timeoutMs)
+        {
+            try
+            {
+                var response = await client.GetAsync($"http://127.0.0.1:{port}/api/version");
+                if (response.IsSuccessStatusCode)
+                {
+                    return;
+                }
+            }
+            catch
+            {
+                // Server not ready yet
+            }
+
+            await Task.Delay(100);
+        }
+
+        throw new TimeoutException("Server did not become ready in time");
+    }
+}
+```
+
+**Run Tests**: `dotnet test e2e_tests/CLI/TailsModeTests.cs` → ✅ Passes
+
+---
+
+### Step 8: Run All Existing Tests (Acceptance Criteria)
+
+**Full Unit Test Suite**:
+```bash
+dotnet test unit_tests --verbosity normal
+```
+
+**Expected**:
+- ✅ All existing unit tests pass (no regressions)
+- ✅ New StdoutReceiver tests pass
+- ✅ New CLI validation tests pass
+- ✅ Code coverage maintained or improved
+
+**Full E2E Test Suite**:
+```bash
+dotnet test e2e_tests --verbosity normal
+```
+
+**Expected**:
+- ✅ All existing E2E tests pass (no behavioral changes)
+- ✅ New TailsModeTests pass
+- ✅ No test timeouts or instability
+
+**If tests fail**:
+1. Verify `StdoutReceiver` is only registered when `options.EnableTails == true`
+2. Check that normal file writing still works (not affected by tails mode)
+3. Ensure CLI validation doesn't break existing option combinations
+4. Review DI configuration for conditional registration logic
+
+---
+
+### Step 9: Update Documentation
+
+**Modify**: `CLAUDE.md` - CLI Commands section
+
+Add new examples:
 
 ```markdown
-### Real-Time Monitoring
+### Tails Mode (Live Telemetry Output)
 
-Watch telemetry as it arrives:
 ```bash
-# Watch all telemetry
-opentelwatcher tail
+# Start with live telemetry output (all signals)
+dotnet run --project opentelwatcher -- start --tails
 
-# Watch only traces
-opentelwatcher tail --signal traces
+# Start with live error output only
+dotnet run --project opentelwatcher -- start --tails --tails-filter-errors-only
 
-# Watch for errors only
-opentelwatcher tail --errors-only
-
-# Verbose output
-opentelwatcher tail --format verbose
-
-# Show last 10 entries then continue monitoring
-opentelwatcher tail --lines 10
+# Example output format:
+# [2025-01-19T12:30:45.123] [traces] {"traceId":"abc123","spans":[...]}
+# [2025-01-19T12:30:45.456] [logs] {"severityNumber":17,"body":"Error occurred"}
 ```
 
-### CLAUDE.md
-
-Update CLI commands section with tail command:
-
-```markdown
-# Monitor telemetry files in real-time
-dotnet run --project opentelwatcher -- tail
-
-# Filter by signal type
-dotnet run --project opentelwatcher -- tail --signal traces
-
-# Show only errors
-dotnet run --project opentelwatcher -- tail --errors-only
-
-# JSON output for piping
-dotnet run --project opentelwatcher -- tail --format json | jq .
-```
-
-### watcheruse.md
-
-Add new usage scenario:
-
-```markdown
-## Scenario 7: Real-Time Telemetry Monitoring During Development
-
-**Goal:** Watch telemetry appear live as application executes.
-
-**Workflow:**
-1. Start watcher in daemon mode
-2. In separate terminal, start tail monitoring
-3. Run application and trigger operations
-4. See spans/logs/metrics appear immediately
-
-**Commands:**
-```bash
-# Terminal 1: Start watcher
-opentelwatcher start --daemon
-
-# Terminal 2: Watch live telemetry
-opentelwatcher tail --signal traces
-
-# Terminal 3: Run application
-npm run dev
+**Notes**:
+- Tails mode writes to both stdout and files simultaneously
+- Cannot be used with `--daemon` mode (requires foreground operation)
+- Output is colorized (errors=red, traces=cyan, logs=white, metrics=green)
+- Press Ctrl+C to stop monitoring and server gracefully
+- NDJSON format is always preserved (no prettification)
 ```
 
 ---
 
-## Success Metrics
+### Step 8: Run Full Test Suite
 
-### Before Tail Command
+**Unit Tests**:
 ```bash
-# Manual, tedious
-while true; do
-  ls -lh ./telemetry-data/*.ndjson
-  tail -1 ./telemetry-data/traces.*.ndjson | jq .resourceSpans[0].scopeSpans[0].spans[0].name
-  sleep 1
-done
+dotnet test unit_tests --verbosity normal
 ```
 
-### After Tail Command
+**Expected**: All tests pass including new StdoutReceiver tests.
+
+**E2E Tests**:
 ```bash
-# Clean, built-in
-opentelwatcher tail --signal traces
-# Output:
-# 14:30:22.456 - TRACE: GET /api/users (124ms, OK)
-# 14:30:22.789 - TRACE: POST /api/orders (56ms, OK)
-# 14:30:23.123 - ERROR: Query failed (status=ERROR, message="Connection timeout")
+dotnet test e2e_tests --verbosity normal
 ```
 
-### Impact Measurements
-- **Developer workflow:** Manual file checking → Real-time visibility
-- **Debugging speed:** Minutes → Seconds (immediate feedback)
-- **Error detection:** Post-mortem file inspection → Live error stream
-- **User experience:** External tools (jq, tail -f) → Native command
+**Expected**: All tests pass including new tails mode tests.
 
----
+**Manual Testing**:
 
-## Future Enhancements (Post-MVP)
-
-### 1. Advanced Filtering
 ```bash
-# Filter by attribute
-opentelwatcher tail --filter "http.status_code >= 500"
+# Test 1: Normal tails
+dotnet run --project opentelwatcher -- start --tails
+# Send telemetry, verify colorized stdout output
+# Verify files also created
+# Ctrl+C to stop
 
-# Filter by trace ID
-opentelwatcher tail --trace-id 5b8efff798038103d269b633813fc60c
-```
+# Test 2: Errors-only tails
+dotnet run --project opentelwatcher -- start --tails --tails-filter-errors-only
+# Send mix of normal and error telemetry
+# Verify only errors in stdout
+# Verify all telemetry in files
 
-### 2. Performance Sampling
-```bash
-# Only show slow traces (>1s)
-opentelwatcher tail --signal traces --min-duration 1000
-```
+# Test 3: Validation errors
+dotnet run --project opentelwatcher -- start --tails --daemon
+# Should fail with error message
 
-### 3. Export to File
-```bash
-# Tail to stdout AND save to file
-opentelwatcher tail --tee captured.ndjson
-```
-
-### 4. Remote Monitoring
-```bash
-# Monitor remote instance (via API)
-opentelwatcher tail --remote http://remote-host:4318
+dotnet run --project opentelwatcher -- start --tails-filter-errors-only
+# Should fail with error message
 ```
 
 ---
 
-## Dependencies and Risks
+## Verification Checklist
 
-### Dependencies
-- **FileSystemWatcher**: .NET built-in (reliable, well-tested)
-- **Existing parsers**: Reuse OTLP deserialization from TelemetryCollectionService
-- **System.CommandLine**: Already used in CLI
+Before considering feature complete:
 
-### Risks and Mitigations
+**Code Changes**:
+- [ ] `StdoutReceiver` implemented
+- [ ] CLI options added (`--tails`, `--tails-filter-errors-only`)
+- [ ] ServerOptions updated
+- [ ] DI configuration conditionally registers StdoutReceiver
+- [ ] UX messages added to StartCommand
 
-| Risk | Likelihood | Impact | Mitigation |
-|------|-----------|--------|------------|
-| High CPU usage during idle | Low | Medium | Event-driven FileSystemWatcher (not polling) |
-| File locking conflicts | Medium | Low | Retry logic with backoff, read-only file access |
-| Memory leak during long sessions | Low | High | Dispose FileSystemWatcher properly, limit buffering |
-| Malformed JSON crashes tool | Medium | Medium | Try/catch with skip and warn strategy |
-| File rotation detection failure | Low | Medium | Test with actual rotation scenarios |
+**Test Changes**:
+- [ ] New unit tests for StdoutReceiver written and passing
+- [ ] New unit tests for CLI validation written and passing
+- [ ] New E2E tests for tails mode written and passing
+- [ ] Existing tests updated if needed (validation tests, etc.)
+
+**Functionality**:
+- [ ] Manual testing confirms colorized output
+- [ ] Manual testing confirms timestamp format (`yyyy-MM-ddTHH:mm:ss.fff`)
+- [ ] Manual testing confirms dual output (stdout + files)
+- [ ] Manual testing confirms Ctrl+C graceful shutdown
+- [ ] Validation prevents `--tails` + `--daemon`
+- [ ] Validation prevents `--tails-filter-errors-only` without `--tails`
+
+**Acceptance Criteria** (MUST ALL PASS):
+- [ ] `dotnet test unit_tests` - 100% pass rate (all existing + new tests)
+- [ ] `dotnet test e2e_tests` - 100% pass rate (all existing + new tests)
+- [ ] No regressions in existing tests
+- [ ] Code coverage maintained or improved
+- [ ] Documentation updated in CLAUDE.md
 
 ---
 
-## Conclusion
+## Summary
 
-The `tail` command fills a significant gap in the developer experience by providing **real-time visibility** into telemetry capture. While deferred as a "nice-to-have" in the Quick Wins roadmap, it represents a high-value feature for development and debugging workflows.
+**New Files (4)**:
+- `Services/Receivers/StdoutReceiver.cs`
+- `unit_tests/Services/Receivers/StdoutReceiverTests.cs`
+- `unit_tests/CLI/TailsOptionValidationTests.cs`
+- `e2e_tests/CLI/TailsModeTests.cs`
 
-**Recommended Timeline:**
-- Phase 1 (Core Infrastructure): 3-4 hours
-- Phase 2 (Formatting and Display): 2-3 hours
-- Phase 3 (Testing): 1-2 hours
-- **Total: 6-9 hours**
+**Modified Files (6+)**:
+- `CLI/Models/CommandModels.cs` (add Tails, TailsFilterErrorsOnly properties)
+- `CLI/CliApplication.cs` (add options and validators)
+- `CLI/Commands/StartCommand.cs` (add UX messages, pass options)
+- `Hosting/ServerOptions.cs` (add EnableTails, TailsFilterErrorsOnly)
+- `Hosting/WebApplicationHost.cs` (conditionally register StdoutReceiver)
+- `CLAUDE.md` (documentation)
+- Any existing test files that test StartCommand validation (update as needed)
 
-**Implementation Priority:** After completion of Quick Wins #1-8 (simplyplan.md), implement as first "enhancement" feature based on user demand.
+**Estimated Effort**: ~150 lines production code, ~250 lines test code
+
+**Dependencies**: Requires completed refactoring from `refac.md`
+
+## Future Extensibility with Multiple Filters
+
+The pipeline supports multiple filters per receiver. Future options could include:
+
+```bash
+# Example: Tails for traces only
+opentelwatcher start --tails --tails-signal traces
+
+# Example: Tails for errors from logs only
+opentelwatcher start --tails --tails-filter-errors-only --tails-signal logs
+
+# Example: Sampled tails (future feature)
+opentelwatcher start --tails --tails-sample-rate 0.1
+```
+
+Implementation would add new filters and combine them:
+
+```csharp
+var filters = new List<ITelemetryFilter>();
+if (options.TailsFilterErrorsOnly)
+    filters.Add(errorsOnlyFilter);
+if (options.TailsSignal != null)
+    filters.Add(new SignalTypeFilter(options.TailsSignal));
+if (options.TailsSampleRate.HasValue)
+    filters.Add(new SamplingFilter(options.TailsSampleRate.Value));
+
+pipeline.RegisterReceiver(stdoutReceiver, filters.ToArray());
+```
