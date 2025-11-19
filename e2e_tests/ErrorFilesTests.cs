@@ -180,8 +180,12 @@ public class ErrorFilesTests
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK);
 
-        // Wait a moment to ensure any file write would have occurred
+        // By getting reponse we effectively wait for file to be written by server (avoiding having to wait)
+        await response.Content.ReadAsStringAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        // In case of dir changes we stiill ned to wait a moment to ensure any file write would have occurred
         await Task.Delay(E2EConstants.Delays.FileWriteSettlingMs, TestContext.Current.CancellationToken);
+
 
         // No new error files should be created
         var errorFilesAfter = Directory.GetFiles(outputDirectory, "traces.*.errors.ndjson").Length;
@@ -207,7 +211,10 @@ public class ErrorFilesTests
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK);
 
-        // Wait a moment to ensure any file write would have occurred
+        // By getting reponse we effectively wait for file to be written by server (avoiding having to wait)
+        await response.Content.ReadAsStringAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        // In case of dir changes we stiill ned to wait a moment to ensure any file write would have occurred
         await Task.Delay(E2EConstants.Delays.FileWriteSettlingMs, TestContext.Current.CancellationToken);
 
         // No new error files should be created
