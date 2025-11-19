@@ -160,6 +160,18 @@ public sealed class CliApplication
             Description = "Output results in JSON format",
             DefaultValueFactory = _ => false
         };
+        var tailsOption = new Option<bool>("--tails")
+        {
+            Description = "Output live telemetry to stdout in addition to files",
+            DefaultValueFactory = _ => false
+        };
+
+        var tailsFilterErrorsOnlyOption = new Option<bool>("--tails-filter-errors-only")
+        {
+            Description = "Only output errors when using --tails (requires --tails)",
+            DefaultValueFactory = _ => false
+        };
+
 
         var startCommand = new Command("start", "Start the OpenTelWatcher service\n\n" +
             "Options:\n" +
@@ -177,8 +189,27 @@ public sealed class CliApplication
             daemonOption,
             silentOption,
             verboseOption,
+            tailsOption,
+            tailsFilterErrorsOnlyOption,
             jsonOption
         };
+        // Add validators for tails options
+        startCommand.Validators.Add(result =>
+        {
+            var daemon = result.GetValue(daemonOption);
+            var tails = result.GetValue(tailsOption);
+            var tailsFilterErrorsOnly = result.GetValue(tailsFilterErrorsOnlyOption);
+
+            if (tails && daemon)
+            {
+                result.AddError("Cannot use --tails with --daemon. Tails mode requires foreground operation.");
+            }
+
+            if (tailsFilterErrorsOnly && !tails)
+            {
+                result.AddError("Cannot use --tails-filter-errors-only without --tails.");
+            }
+        });
 
         // Use SetAction with parameter binding
         startCommand.SetAction(parseResult =>
@@ -190,6 +221,8 @@ public sealed class CliApplication
             var daemon = parseResult.GetValue(daemonOption);
             var silent = parseResult.GetValue(silentOption);
             var verbose = parseResult.GetValue(verboseOption);
+            var tails = parseResult.GetValue(tailsOption);
+            var tailsFilterErrorsOnly = parseResult.GetValue(tailsFilterErrorsOnlyOption);
             var json = parseResult.GetValue(jsonOption);
 
             // Parse log level
@@ -206,7 +239,9 @@ public sealed class CliApplication
                 LogLevel = logLevel,
                 Daemon = daemon,
                 Silent = silent,
-                Verbose = verbose
+                Verbose = verbose,
+                Tails = tails,
+                TailsFilterErrorsOnly = tailsFilterErrorsOnly
             };
 
             var services = BuildServiceProvider(port);
@@ -239,6 +274,18 @@ public sealed class CliApplication
             Description = "Output results in JSON format",
             DefaultValueFactory = _ => false
         };
+        var tailsOption = new Option<bool>("--tails")
+        {
+            Description = "Output live telemetry to stdout in addition to files",
+            DefaultValueFactory = _ => false
+        };
+
+        var tailsFilterErrorsOnlyOption = new Option<bool>("--tails-filter-errors-only")
+        {
+            Description = "Only output errors when using --tails (requires --tails)",
+            DefaultValueFactory = _ => false
+        };
+
 
         var stopCommand = new Command("stop", "Stop the running OpenTelWatcher instance\n\n" +
             "Sends shutdown request to the running instance via HTTP API.\n" +
@@ -316,6 +363,18 @@ public sealed class CliApplication
             Description = "Output results in JSON format",
             DefaultValueFactory = _ => false
         };
+        var tailsOption = new Option<bool>("--tails")
+        {
+            Description = "Output live telemetry to stdout in addition to files",
+            DefaultValueFactory = _ => false
+        };
+
+        var tailsFilterErrorsOnlyOption = new Option<bool>("--tails-filter-errors-only")
+        {
+            Description = "Only output errors when using --tails (requires --tails)",
+            DefaultValueFactory = _ => false
+        };
+
 
         var outputDirOption = new Option<string?>("--output-dir")
         {
@@ -437,6 +496,18 @@ public sealed class CliApplication
             Description = "Output results in JSON format",
             DefaultValueFactory = _ => false
         };
+        var tailsOption = new Option<bool>("--tails")
+        {
+            Description = "Output live telemetry to stdout in addition to files",
+            DefaultValueFactory = _ => false
+        };
+
+        var tailsFilterErrorsOnlyOption = new Option<bool>("--tails-filter-errors-only")
+        {
+            Description = "Only output errors when using --tails (requires --tails)",
+            DefaultValueFactory = _ => false
+        };
+
 
         var clearCommand = new Command("clear", "Clear telemetry data files\n\n" +
             "If an instance is running: Clears files via API using the instance's output directory\n" +
@@ -454,6 +525,8 @@ public sealed class CliApplication
             outputDirOption,
             silentOption,
             verboseOption,
+            tailsOption,
+            tailsFilterErrorsOnlyOption,
             jsonOption
         };
 
@@ -463,6 +536,8 @@ public sealed class CliApplication
             var outputDir = parseResult.GetValue(outputDirOption);
             var silent = parseResult.GetValue(silentOption);
             var verbose = parseResult.GetValue(verboseOption);
+            var tails = parseResult.GetValue(tailsOption);
+            var tailsFilterErrorsOnly = parseResult.GetValue(tailsFilterErrorsOnlyOption);
             var json = parseResult.GetValue(jsonOption);
 
             // Resolve port (auto-detect from PID file if not specified)
@@ -515,6 +590,18 @@ public sealed class CliApplication
             Description = "Output results in JSON format",
             DefaultValueFactory = _ => false
         };
+        var tailsOption = new Option<bool>("--tails")
+        {
+            Description = "Output live telemetry to stdout in addition to files",
+            DefaultValueFactory = _ => false
+        };
+
+        var tailsFilterErrorsOnlyOption = new Option<bool>("--tails-filter-errors-only")
+        {
+            Description = "Only output errors when using --tails (requires --tails)",
+            DefaultValueFactory = _ => false
+        };
+
 
         var listCommand = new Command("list", "List telemetry data files\n\n" +
             "Scans the output directory for .ndjson telemetry files.\n" +

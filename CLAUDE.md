@@ -162,6 +162,11 @@ dotnet run --project opentelwatcher -- start --port 4318 --output-dir ./data
 
 # Start in background mode (non-blocking)
 dotnet run --project opentelwatcher -- start --daemon --port 4318
+n# Start with live telemetry output to stdout (all signals - colorized NDJSON)
+dotnet run --project opentelwatcher -- start --tails
+
+# Start with live telemetry output (errors only)
+dotnet run --project opentelwatcher -- start --tails --tails-filter-errors-only
 
 # Stop the running instance (auto-detects port from PID file)
 dotnet run --project opentelwatcher -- stop
@@ -606,3 +611,61 @@ return 0;
 - When the user finds a bug or a review finds a bug (outside the normal process of adding a feature) do  first try to reproduce it with a unit or E2E test before fixing the bug.
 - All code and build/test infrastructure must be cross platform so it works on windows, mac and linux (without installing special tools/shells to simulate other platforms)
 - .cs files with topline "#!/usr/bin/dotnet run" are single file app files (new in .NET 10). They should be run directly using "dotnet run PATH\app.cs", where app.cs is the name of the file and PATH is the relative path to where the app file is located 
+### Tails Mode (Live Telemetry Output)
+
+**Overview:**
+Tails mode outputs live telemetry to stdout in addition to writing files to disk. Telemetry is displayed as colorized, timestamped NDJSON with signal type labels.
+
+**Options:**
+- `--tails` - Enable live telemetry output to stdout (all signals: traces, logs, metrics)
+- `--tails-filter-errors-only` - Only output errors (requires `--tails`)
+
+**Constraints:**
+- Cannot use `--tails` with `--daemon` (tails requires foreground operation)
+- Cannot use `--tails-filter-errors-only` without `--tails`
+
+**Output Format:**
+```
+[2025-01-19T12:30:45.123] [traces] {"traceId":"abc123","spans":[...]}
+[2025-01-19T12:30:45.456] [logs] {"body":"Application started","severity":"INFO"}
+[2025-01-19T12:30:45.789] [metrics] {"name":"requests.count","value":42}
+```
+
+**Colorization:**
+- **Cyan** - Traces (normal)
+- **White** - Logs (normal)
+- **Green** - Metrics (normal)
+- **Red** - All error telemetry (overrides signal colors)
+
+**Dual Output:**
+Tails mode is purely additive - all telemetry is still written to files as normal. Stdout output is an additional live view, not a replacement for file storage.
+
+**Use Cases:**
+- Development: Monitor telemetry in real-time while testing
+- Debugging: Watch for errors as they occur
+- CI/CD: Capture telemetry output in build logs for troubleshooting
+
+**Examples:**
+```bash
+# Watch all telemetry in real-time
+dotnet run --project opentelwatcher -- start --tails
+
+# Watch only errors
+dotnet run --project opentelwatcher -- start --tails --tails-filter-errors-only
+
+# Custom port and output directory
+dotnet run --project opentelwatcher -- start --tails --port 5000 --output-dir ./telemetry
+
+# Invalid combinations (will error)
+dotnet run --project opentelwatcher -- start --tails --daemon
+# Error: Cannot use --tails with --daemon. Tails mode requires foreground operation.
+
+dotnet run --project opentelwatcher -- start --tails-filter-errors-only
+# Error: Cannot use --tails-filter-errors-only without --tails.
+```
+
+**Implementation:**
+- `StdoutReceiver` class writes telemetry to stdout with thread-safe semaphore locking
+- Registered conditionally in telemetry pipeline when `--tails` flag is present
+- Uses `AllSignalsFilter` or `ErrorsOnlyFilter` based on `--tails-filter-errors-only`
+- Timestamps use InvariantCulture for consistent formatting across platforms

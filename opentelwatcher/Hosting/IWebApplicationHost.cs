@@ -29,6 +29,8 @@ public record ServerOptions
     public bool Daemon { get; init; }
     public bool Silent { get; init; }
     public bool Verbose { get; init; }
+    public bool EnableTails { get; init; }
+    public bool TailsFilterErrorsOnly { get; init; }
 }
 
 /// <summary>

@@ -151,6 +151,21 @@ public class WebApplicationHost : IWebApplicationHost
                 watcherOptions.MaxFileSizeMB,
                 sp.GetRequiredService<ILogger<FileReceiver>>());
             pipeline.RegisterReceiver(errorReceiver, new ErrorsOnlyFilter());
+            // Register StdoutReceiver if tails mode is enabled
+            if (options.EnableTails)
+            {
+                var stdoutReceiver = new StdoutReceiver(
+                    sp.GetRequiredService<ILogger<StdoutReceiver>>());
+
+                if (options.TailsFilterErrorsOnly)
+                {
+                    pipeline.RegisterReceiver(stdoutReceiver, new ErrorsOnlyFilter());
+                }
+                else
+                {
+                    pipeline.RegisterReceiver(stdoutReceiver, new AllSignalsFilter());
+                }
+            }
 
             return pipeline;
         });

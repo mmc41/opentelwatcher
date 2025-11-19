@@ -17,6 +17,10 @@ public sealed record CommandOptions
     public bool Daemon { get; init; } = false;
     public bool Silent { get; init; } = false;
     public bool Verbose { get; init; } = false;
+
+    // Tails options
+    public bool Tails { get; init; } = false;
+    public bool TailsFilterErrorsOnly { get; init; } = false;
 }
 
 /// <summary>

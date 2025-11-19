@@ -76,7 +76,9 @@ public sealed class StartCommand
             LogLevel = options.LogLevel.ToString(),
             Daemon = options.Daemon,
             Silent = options.Silent,
-            Verbose = options.Verbose
+            Verbose = options.Verbose,
+            EnableTails = options.Tails,
+            TailsFilterErrorsOnly = options.TailsFilterErrorsOnly
         };
 
         var validationResult = _webHost.Validate(serverOptions);
@@ -172,12 +174,26 @@ public sealed class StartCommand
     {
         result["method"] = "normal";
 
+        // Display startup banner if tails enabled
+        if (serverOptions.EnableTails && !silent)
+        {
+            var filterMode = serverOptions.TailsFilterErrorsOnly ? "(errors only)" : "(all signals)";
+            Console.WriteLine($"Monitoring telemetry output {filterMode}");
+            Console.WriteLine("Press Ctrl+C to stop...\\n");
+        }
+
         try
         {
             var exitCode = await _webHost.RunAsync(serverOptions);
             result["success"] = exitCode == 0;
             result["exitCode"] = exitCode;
             result["message"] = exitCode == 0 ? "Server stopped gracefully" : $"Server exited with code {exitCode}";
+
+            // Display shutdown message if tails enabled
+            if (serverOptions.EnableTails && !silent && exitCode == 0)
+            {
+                Console.WriteLine("\\nMonitoring stopped");
+            }
 
             OutputResult(result, jsonOutput, silent, isError: exitCode != 0, errorType: exitCode != 0 ? "Server exited with error" : null);
 
