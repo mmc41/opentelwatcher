@@ -588,6 +588,12 @@ return 0;
       ContinueOnError="true" />
 ```
 
+**Important: Always use absolute paths for script arguments**
+- All arguments passed to scripts must use `$(MSBuildThisFileDirectory)` prefix
+- This avoids the Linux bug where `Environment.CurrentDirectory` returns script's directory instead of working directory
+- See: https://github.com/dotnet/sdk/issues/51778
+- Example: Use `$(MSBuildThisFileDirectory)artifacts/logs` NOT `artifacts/logs`
+
 **Benefits:**
 - No project files or dependencies to maintain
 - Fast execution (no restore/build required)
