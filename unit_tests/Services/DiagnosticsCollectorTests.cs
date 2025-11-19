@@ -261,7 +261,7 @@ public class DiagnosticsCollectorTests : IDisposable
         File.WriteAllText(logsFile, "{\"test\":\"data\"}\n");
 
         // Act
-        var fileInfos = collector.GetFileInfo("traces");
+        var fileInfos = collector.GetFileInfo(SignalType.Traces);
 
         // Assert
         fileInfos.Should().HaveCount(1);

@@ -1,3 +1,4 @@
+using OpenTelWatcher.Configuration;
 using OpenTelWatcher.Services.Interfaces;
 using System.Collections.Concurrent;
 
@@ -34,20 +35,21 @@ public class FileRotationService : IFileRotationService, IDisposable
     }
 
     /// <inheritdoc/>
-    public string GenerateNewFilePath(string outputDirectory, string signal)
+    public string GenerateNewFilePath(string outputDirectory, SignalType signal)
     {
         // Generate UTC timestamp with millisecond precision to prevent collisions: yyyyMMdd_HHmmss_fff
         var timestamp = _timeProvider.UtcNow.ToString("yyyyMMdd_HHmmss_fff");
-        var fileName = $"{signal}.{timestamp}.ndjson";
+        var fileName = $"{signal.ToLowerString()}.{timestamp}.ndjson";
 
         return Path.Combine(outputDirectory, fileName);
     }
 
     /// <inheritdoc/>
-    public string GetOrCreateFilePath(string outputDirectory, string signal)
+    public string GetOrCreateFilePath(string outputDirectory, SignalType signal)
     {
-        // Use signal as the key to track active file per signal type
-        return _activeFilePaths.GetOrAdd(signal, _ =>
+        // Use signal string as the key to track active file per signal type
+        var signalKey = signal.ToLowerString();
+        return _activeFilePaths.GetOrAdd(signalKey, _ =>
         {
             // Ensure output directory exists
             if (!Directory.Exists(outputDirectory))
@@ -60,10 +62,13 @@ public class FileRotationService : IFileRotationService, IDisposable
     }
 
     /// <inheritdoc/>
-    public string RotateFile(string outputDirectory, string signal)
+    public string RotateFile(string outputDirectory, SignalType signal)
     {
+        // Use signal string as the key
+        var signalKey = signal.ToLowerString();
+
         // Get or create a semaphore for this signal type
-        var semaphore = _rotationLocks.GetOrAdd(signal, _ => new SemaphoreSlim(1, 1));
+        var semaphore = _rotationLocks.GetOrAdd(signalKey, _ => new SemaphoreSlim(1, 1));
 
         semaphore.Wait();
         try
@@ -78,7 +83,7 @@ public class FileRotationService : IFileRotationService, IDisposable
             var newFilePath = GenerateNewFilePath(outputDirectory, signal);
 
             // Update cached path
-            _activeFilePaths[signal] = newFilePath;
+            _activeFilePaths[signalKey] = newFilePath;
 
             return newFilePath;
         }

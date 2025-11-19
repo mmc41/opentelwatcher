@@ -73,16 +73,6 @@ public static class TestConstants
     }
 
     /// <summary>
-    /// Test signal types.
-    /// </summary>
-    public static class Signals
-    {
-        public const string Traces = "traces";
-        public const string Logs = "logs";
-        public const string Metrics = "metrics";
-    }
-
-    /// <summary>
     /// Test file patterns and names.
     /// </summary>
     public static class FileNames

@@ -74,16 +74,6 @@ public static class E2EConstants
     }
 
     /// <summary>
-    /// Signal type values.
-    /// </summary>
-    public static class SignalTypes
-    {
-        public const string Traces = "traces";
-        public const string Logs = "logs";
-        public const string Metrics = "metrics";
-    }
-
-    /// <summary>
     /// Common JSON property names in API responses.
     /// </summary>
     public static class JsonProperties

@@ -1,4 +1,5 @@
 using FluentAssertions;
+using OpenTelWatcher.Configuration;
 using OpenTelWatcher.Services;
 using UnitTests.Helpers;
 using Xunit;
@@ -13,7 +14,7 @@ public class FileRotationServiceTests
         // Arrange
         var service = new FileRotationService(new MockTimeProvider());
         var outputDir = Path.Combine(Path.GetTempPath(), "telemetry-test");
-        var signal = "traces";
+        var signal = SignalType.Traces;
 
         // Act
         var filePath = service.GenerateNewFilePath(outputDir, signal);
@@ -29,10 +30,10 @@ public class FileRotationServiceTests
     }
 
     [Theory]
-    [InlineData("traces")]
-    [InlineData("logs")]
-    [InlineData("metrics")]
-    public void GenerateNewFilePath_WithDifferentSignals_IncludesSignalInFileName(string signal)
+    [InlineData(SignalType.Traces)]
+    [InlineData(SignalType.Logs)]
+    [InlineData(SignalType.Metrics)]
+    public void GenerateNewFilePath_WithDifferentSignals_IncludesSignalInFileName(SignalType signal)
     {
         // Arrange
         var service = new FileRotationService(new MockTimeProvider());
@@ -43,7 +44,7 @@ public class FileRotationServiceTests
 
         // Assert
         var fileName = Path.GetFileName(filePath);
-        fileName.Should().StartWith(signal + ".");
+        fileName.Should().StartWith(signal.ToLowerString() + ".");
     }
 
     [Fact]
@@ -114,7 +115,7 @@ public class FileRotationServiceTests
         // Arrange
         var service = new FileRotationService(new MockTimeProvider());
         var outputDir = Path.Combine(Path.GetTempPath(), "telemetry-test-" + Guid.NewGuid());
-        var signal = "traces";
+        var signal = SignalType.Traces;
 
         try
         {
@@ -139,7 +140,7 @@ public class FileRotationServiceTests
         // Arrange
         var service = new FileRotationService(new MockTimeProvider());
         var outputDir = Path.Combine(Path.GetTempPath(), "telemetry-test-" + Guid.NewGuid());
-        var signal = "traces";
+        var signal = SignalType.Traces;
 
         try
         {
@@ -167,9 +168,9 @@ public class FileRotationServiceTests
         try
         {
             // Act
-            var tracesPath = service.GetOrCreateFilePath(outputDir, "traces");
-            var logsPath = service.GetOrCreateFilePath(outputDir, "logs");
-            var metricsPath = service.GetOrCreateFilePath(outputDir, "metrics");
+            var tracesPath = service.GetOrCreateFilePath(outputDir, SignalType.Traces);
+            var logsPath = service.GetOrCreateFilePath(outputDir, SignalType.Logs);
+            var metricsPath = service.GetOrCreateFilePath(outputDir, SignalType.Metrics);
 
             // Assert
             tracesPath.Should().NotBe(logsPath);
@@ -195,7 +196,7 @@ public class FileRotationServiceTests
         // Arrange
         var service = new FileRotationService(new MockTimeProvider());
         var outputDir = Path.Combine(Path.GetTempPath(), "telemetry-test-" + Guid.NewGuid());
-        var signal = "traces";
+        var signal = SignalType.Traces;
 
         try
         {
@@ -222,7 +223,7 @@ public class FileRotationServiceTests
         var timeProvider = new MockTimeProvider();
         var service = new FileRotationService(timeProvider);
         var outputDir = Path.Combine(Path.GetTempPath(), "telemetry-test-" + Guid.NewGuid());
-        var signal = "traces";
+        var signal = SignalType.Traces;
 
         try
         {
@@ -252,7 +253,7 @@ public class FileRotationServiceTests
         // Arrange
         var service = new FileRotationService(new MockTimeProvider());
         var outputDir = Path.Combine(Path.GetTempPath(), "telemetry-test-" + Guid.NewGuid());
-        var signal = "logs";
+        var signal = SignalType.Logs;
 
         try
         {
@@ -280,7 +281,7 @@ public class FileRotationServiceTests
         var timeProvider = new MockTimeProvider();
         var service = new FileRotationService(timeProvider);
         var outputDir = Path.Combine(Path.GetTempPath(), "telemetry-test-" + Guid.NewGuid());
-        var signal = "metrics";
+        var signal = SignalType.Metrics;
 
         try
         {
@@ -311,7 +312,7 @@ public class FileRotationServiceTests
         // Arrange
         var service = new FileRotationService(new MockTimeProvider());
         var outputDir = Path.Combine(Path.GetTempPath(), "telemetry-test-" + Guid.NewGuid());
-        var signal = "traces";
+        var signal = SignalType.Traces;
 
         try
         {
@@ -325,7 +326,7 @@ public class FileRotationServiceTests
 
             // Assert - All calls should complete without exception
             results.Should().HaveCount(10);
-            results.Should().OnlyContain(path => path.Contains(signal));
+            results.Should().OnlyContain(path => path.Contains(signal.ToLowerString()));
 
             // All threads should have gotten valid paths (semaphore protected the operation)
             results.Should().OnlyContain(path => !string.IsNullOrEmpty(path));
@@ -351,8 +352,8 @@ public class FileRotationServiceTests
         try
         {
             // Create some semaphores by rotating files
-            service.RotateFile(outputDir, TestConstants.Signals.Traces);
-            service.RotateFile(outputDir, TestConstants.Signals.Logs);
+            service.RotateFile(outputDir, SignalType.Traces);
+            service.RotateFile(outputDir, SignalType.Logs);
 
             // Act - Dispose multiple times
             service.Dispose();

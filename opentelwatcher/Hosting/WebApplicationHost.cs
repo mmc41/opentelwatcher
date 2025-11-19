@@ -5,8 +5,11 @@ using Microsoft.Extensions.Logging;
 using Microsoft.OpenApi;
 using NLog.Web;
 using OpenTelWatcher.Configuration;
+using OpenTelWatcher.Serialization;
 using OpenTelWatcher.Services;
+using OpenTelWatcher.Services.Filters;
 using OpenTelWatcher.Services.Interfaces;
+using OpenTelWatcher.Services.Receivers;
 using OpenTelemetry.Proto.Collector.Trace.V1;
 using OpenTelemetry.Proto.Collector.Logs.V1;
 using OpenTelemetry.Proto.Collector.Metrics.V1;
@@ -116,11 +119,41 @@ public class WebApplicationHost : IWebApplicationHost
         builder.Services.AddSingleton<IFileRotationService, FileRotationService>();
         builder.Services.AddSingleton<IHealthMonitor, HealthMonitor>();
         builder.Services.AddSingleton<IErrorDetectionService, ErrorDetectionService>();
-        builder.Services.AddSingleton<ITelemetryFileWriter, TelemetryFileWriter>();
         builder.Services.AddSingleton<ITelemetryStatistics, TelemetryStatisticsService>();
         builder.Services.AddSingleton<IDiagnosticsCollector, DiagnosticsCollector>();
         builder.Services.AddSingleton<IPidFileService, PidFileService>();
         builder.Services.AddSingleton<ITelemetryFileManager, TelemetryFileManager>();
+
+        // Pipeline architecture (new)
+        builder.Services.AddSingleton<IProtobufJsonSerializer, ProtobufJsonSerializer>();
+        builder.Services.AddSingleton<ITelemetryPipeline>(sp =>
+        {
+            var serializer = sp.GetRequiredService<IProtobufJsonSerializer>();
+            var errorDetection = sp.GetRequiredService<IErrorDetectionService>();
+            var timeProvider = sp.GetRequiredService<ITimeProvider>();
+            var logger = sp.GetRequiredService<ILogger<TelemetryPipeline>>();
+            var pipeline = new TelemetryPipeline(serializer, errorDetection, timeProvider, logger);
+
+            // Register FileReceiver for normal files (all signals)
+            var normalReceiver = new FileReceiver(
+                sp.GetRequiredService<IFileRotationService>(),
+                watcherOptions.OutputDirectory,
+                ".ndjson",
+                watcherOptions.MaxFileSizeMB,
+                sp.GetRequiredService<ILogger<FileReceiver>>());
+            pipeline.RegisterReceiver(normalReceiver, new AllSignalsFilter());
+
+            // Register FileReceiver for error files (errors only)
+            var errorReceiver = new FileReceiver(
+                sp.GetRequiredService<IFileRotationService>(),
+                watcherOptions.OutputDirectory,
+                ".errors.ndjson",
+                watcherOptions.MaxFileSizeMB,
+                sp.GetRequiredService<ILogger<FileReceiver>>());
+            pipeline.RegisterReceiver(errorReceiver, new ErrorsOnlyFilter());
+
+            return pipeline;
+        });
 
         // Razor Pages
         builder.Services.AddRazorPages(opts =>
@@ -232,17 +265,17 @@ public class WebApplicationHost : IWebApplicationHost
         // OTLP Trace endpoint
         app.MapPost("/v1/traces", async (
             HttpRequest request,
-            ITelemetryFileWriter writer,
+            ITelemetryPipeline pipeline,
             ITelemetryStatistics stats,
             CancellationToken cancellationToken) =>
         {
             return await ProcessOtlpRequestAsync<ExportTraceServiceRequest, ExportTraceServiceResponse>(
                 request,
-                writer,
+                pipeline,
                 stats,
                 app.Logger,
                 cancellationToken,
-                SignalTypes.Traces,
+                SignalType.Traces,
                 ExportTraceServiceRequest.Parser,
                 s => s.IncrementTraces());
         })
@@ -256,17 +289,17 @@ public class WebApplicationHost : IWebApplicationHost
         // OTLP Logs endpoint
         app.MapPost("/v1/logs", async (
             HttpRequest request,
-            ITelemetryFileWriter writer,
+            ITelemetryPipeline pipeline,
             ITelemetryStatistics stats,
             CancellationToken cancellationToken) =>
         {
             return await ProcessOtlpRequestAsync<ExportLogsServiceRequest, ExportLogsServiceResponse>(
                 request,
-                writer,
+                pipeline,
                 stats,
                 app.Logger,
                 cancellationToken,
-                SignalTypes.Logs,
+                SignalType.Logs,
                 ExportLogsServiceRequest.Parser,
                 s => s.IncrementLogs());
         })
@@ -280,17 +313,17 @@ public class WebApplicationHost : IWebApplicationHost
         // OTLP Metrics endpoint
         app.MapPost("/v1/metrics", async (
             HttpRequest request,
-            ITelemetryFileWriter writer,
+            ITelemetryPipeline pipeline,
             ITelemetryStatistics stats,
             CancellationToken cancellationToken) =>
         {
             return await ProcessOtlpRequestAsync<ExportMetricsServiceRequest, ExportMetricsServiceResponse>(
                 request,
-                writer,
+                pipeline,
                 stats,
                 app.Logger,
                 cancellationToken,
-                SignalTypes.Metrics,
+                SignalType.Metrics,
                 ExportMetricsServiceRequest.Parser,
                 s => s.IncrementMetrics());
         })
@@ -309,21 +342,21 @@ public class WebApplicationHost : IWebApplicationHost
     /// <typeparam name="TRequest">The protobuf request type (e.g., ExportTraceServiceRequest)</typeparam>
     /// <typeparam name="TResponse">The protobuf response type (e.g., ExportTraceServiceResponse)</typeparam>
     /// <param name="request">The HTTP request</param>
-    /// <param name="writer">The telemetry file writer service</param>
+    /// <param name="pipeline">The telemetry pipeline service</param>
     /// <param name="stats">The telemetry statistics service</param>
     /// <param name="logger">The logger</param>
     /// <param name="cancellationToken">Cancellation token</param>
-    /// <param name="signalType">The signal type (traces, logs, or metrics)</param>
+    /// <param name="signalType">The signal type</param>
     /// <param name="parser">The protobuf message parser</param>
     /// <param name="incrementStats">Action to increment the appropriate statistics counter</param>
     /// <returns>An HTTP result</returns>
     private static async Task<IResult> ProcessOtlpRequestAsync<TRequest, TResponse>(
         HttpRequest request,
-        ITelemetryFileWriter writer,
+        ITelemetryPipeline pipeline,
         ITelemetryStatistics stats,
         Microsoft.Extensions.Logging.ILogger logger,
         CancellationToken cancellationToken,
-        string signalType,
+        SignalType signalType,
         MessageParser<TRequest> parser,
         Action<ITelemetryStatistics> incrementStats)
         where TRequest : IMessage<TRequest>
@@ -336,7 +369,7 @@ public class WebApplicationHost : IWebApplicationHost
             memoryStream.Position = 0;
 
             var otlpRequest = parser.ParseFrom(memoryStream);
-            await writer.WriteAsync(otlpRequest, signalType, cancellationToken);
+            await pipeline.WriteAsync(otlpRequest, signalType, cancellationToken);
             incrementStats(stats);
 
             return Results.Ok(new TResponse());
@@ -394,14 +427,15 @@ public class WebApplicationHost : IWebApplicationHost
 
             var assembly = Assembly.GetExecutingAssembly();
             var version = assembly.GetName().Version ?? new Version(1, 0, 0);
-            var fileInfos = diagnostics.GetFileInfo(signal);
+            var signalType = SignalTypeExtensions.FromString(signal);
+            var fileInfos = diagnostics.GetFileInfo(signalType);
 
             // Calculate uptime
             var processStartTime = Process.GetCurrentProcess().StartTime;
             var uptimeSeconds = (long)(timeProvider.UtcNow - processStartTime).TotalSeconds;
 
             // Get file breakdown by type
-            var allFiles = diagnostics.GetFileInfo(null);
+            var allFiles = diagnostics.GetFileInfo(SignalType.Unspecified);
             var traceFiles = allFiles.Where(f => f.Path.Contains("traces.", StringComparison.OrdinalIgnoreCase)).ToList();
             var logFiles = allFiles.Where(f => f.Path.Contains("logs.", StringComparison.OrdinalIgnoreCase)).ToList();
             var metricFiles = allFiles.Where(f => f.Path.Contains("metrics.", StringComparison.OrdinalIgnoreCase)).ToList();
@@ -525,7 +559,7 @@ public class WebApplicationHost : IWebApplicationHost
         var version = typeof(Program).Assembly.GetName().Version?.ToString() ?? "0.0.0.0";
 
         // Get existing file statistics
-        var fileInfos = diagnostics.GetFileInfo(signal: null);
+        var fileInfos = diagnostics.GetFileInfo(SignalType.Unspecified);
         var fileCount = fileInfos.Count();
         var totalFileSize = fileInfos.Sum(f => f.SizeBytes);
 

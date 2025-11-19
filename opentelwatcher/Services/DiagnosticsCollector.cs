@@ -51,19 +51,9 @@ public class DiagnosticsCollector : IDiagnosticsCollector
     }
 
     /// <inheritdoc/>
-    public IReadOnlyList<OpenTelWatcher.Services.Interfaces.FileInfo> GetFileInfo(string? signal = null)
+    public IReadOnlyList<OpenTelWatcher.Services.Interfaces.FileInfo> GetFileInfo(SignalType signal = SignalType.Unspecified)
     {
         var fileInfos = new List<OpenTelWatcher.Services.Interfaces.FileInfo>();
-
-        // SECURITY: Validate signal parameter against allowlist to prevent directory traversal
-        if (signal != null)
-        {
-            if (!SignalTypes.IsValid(signal))
-            {
-                // Invalid signal - return empty list rather than throwing to avoid breaking API contract
-                return fileInfos;
-            }
-        }
 
         // Check if output directory exists
         if (!Directory.Exists(_options.OutputDirectory))
@@ -72,7 +62,7 @@ public class DiagnosticsCollector : IDiagnosticsCollector
         }
 
         // Get all .ndjson files in the output directory
-        var searchPattern = signal != null ? $"{signal}.*.ndjson" : "*.ndjson";
+        var searchPattern = signal != SignalType.Unspecified ? $"{signal.ToLowerString()}.*.ndjson" : "*.ndjson";
         var files = Directory.GetFiles(_options.OutputDirectory, searchPattern);
 
         foreach (var filePath in files)

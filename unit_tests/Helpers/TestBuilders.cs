@@ -6,7 +6,6 @@ using OpenTelemetry.Proto.Resource.V1;
 using OpenTelemetry.Proto.Trace.V1;
 using OpenTelWatcher.CLI.Models;
 using OpenTelWatcher.Configuration;
-using OpenTelWatcher.Services;
 using OpenTelWatcher.Services.Interfaces;
 using Google.Protobuf;
 
@@ -30,25 +29,6 @@ public static class TestBuilders
             MaxConsecutiveFileErrors = TestConstants.DefaultConfig.MaxConsecutiveFileErrors,
             MaxErrorHistorySize = TestConstants.DefaultConfig.MaxErrorHistorySize
         };
-    }
-
-    /// <summary>
-    /// Creates TelemetryFileWriter with standard test dependencies.
-    /// </summary>
-    public static TelemetryFileWriter CreateTelemetryFileWriter(
-        string outputDirectory,
-        ITimeProvider? timeProvider = null,
-        bool prettyPrint = false)
-    {
-        var options = CreateDefaultOptions(outputDirectory);
-        options.PrettyPrint = prettyPrint;
-
-        var fileRotationService = new FileRotationService(timeProvider ?? new MockTimeProvider());
-        var healthMonitor = new HealthMonitor(options);
-        var errorDetectionService = new ErrorDetectionService();
-        var logger = TestLoggerFactory.CreateLogger<TelemetryFileWriter>();
-
-        return new TelemetryFileWriter(options, fileRotationService, healthMonitor, errorDetectionService, logger);
     }
 
     /// <summary>

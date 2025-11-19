@@ -1,3 +1,5 @@
+using OpenTelWatcher.Configuration;
+
 namespace OpenTelWatcher.Services.Interfaces;
 
 /// <summary>
@@ -23,9 +25,9 @@ public interface IDiagnosticsCollector
     /// <summary>
     /// Gets information about active telemetry files.
     /// </summary>
-    /// <param name="signal">Optional signal type filter (traces, logs, metrics). If null, returns all.</param>
+    /// <param name="signal">Signal type filter. Use Unspecified to return all files.</param>
     /// <returns>Collection of file information.</returns>
-    IReadOnlyList<FileInfo> GetFileInfo(string? signal = null);
+    IReadOnlyList<FileInfo> GetFileInfo(SignalType signal = SignalType.Unspecified);
 
     /// <summary>
     /// Gets count of consecutive errors.

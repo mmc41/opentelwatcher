@@ -12,6 +12,7 @@ using OpenTelemetry.Proto.Trace.V1;
 using System.Net;
 using System.Text.Json;
 using Xunit;
+using OpenTelWatcher.Configuration;
 
 namespace OpenTelWatcher.Tests.E2E;
 
@@ -115,7 +116,7 @@ public class OpenTelWatcherE2ETests
         response.StatusCode.Should().Be(HttpStatusCode.OK);
 
         // Get output directory from diagnostics
-        var diagResponse = await _client.GetAsync($"{E2EConstants.ApiEndpoints.Status}?{E2EConstants.QueryParams.Signal}={E2EConstants.SignalTypes.Traces}", TestContext.Current.CancellationToken);
+        var diagResponse = await _client.GetAsync($"{E2EConstants.ApiEndpoints.Status}?{E2EConstants.QueryParams.Signal}={SignalType.Traces.ToLowerString()}", TestContext.Current.CancellationToken);
         var diagContent = await diagResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         var diagJson = JsonDocument.Parse(diagContent);
         var outputDir = diagJson.RootElement.GetProperty(E2EConstants.JsonProperties.Configuration).GetProperty(E2EConstants.JsonProperties.OutputDirectory).GetString();
