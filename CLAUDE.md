@@ -605,3 +605,4 @@ return 0;
 - Do not mock ILogger or ILoggerFactory. Do not use NullLogger. Also do not use NLog api directly except from configuration.
 - When the user finds a bug or a review finds a bug (outside the normal process of adding a feature) do  first try to reproduce it with a unit or E2E test before fixing the bug.
 - All code and build/test infrastructure must be cross platform so it works on windows, mac and linux (without installing special tools/shells to simulate other platforms)
+- .cs files with topline "#!/usr/bin/dotnet run" are single file app files (new in .NET 10). They should be run directly using "dotnet run PATH\app.cs", where app.cs is the name of the file and PATH is the relative path to where the app file is located 

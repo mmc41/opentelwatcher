@@ -1,5 +1,10 @@
 #!/usr/bin/dotnet run
 
+// Workaround for getting dotnet publish to work without missing linker complaints.
+#:property TargetFramework=net10.0
+#:property PublishAot=false
+#:property PublishSingleFile=true
+
 #:sdk Microsoft.NET.Sdk
 
 // Check test logs for warnings and errors

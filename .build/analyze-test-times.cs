@@ -1,6 +1,12 @@
 #!/usr/bin/dotnet run
 
+// Workaround for getting dotnet publish to work without missing linker complaints.
+#:property TargetFramework=net10.0
+#:property PublishAot=false
+#:property PublishSingleFile=true
+
 #:sdk Microsoft.NET.Sdk
+
 
 // Analyze test execution times from TRX files
 // This script is called automatically after test execution by MSBuild

@@ -65,7 +65,7 @@
           StandardOutputImportance="Low" />
 
     <!-- Step 3: Extract coverage summary using custom parser (avoids duplicate key issues) -->
-    <Exec Command="dotnet run .build\extract-coverage-summary.cs &quot;$(XmlCoverageFile)&quot; &quot;$(CoverageOutputPath)\Summary.txt&quot;"
+    <Exec Command="dotnet run .build/extract-coverage-summary.cs &quot;$(XmlCoverageFile)&quot; &quot;$(CoverageOutputPath)\Summary.txt&quot;"
           Condition="Exists('$(XmlCoverageFile)')"
           ContinueOnError="true"
           IgnoreExitCode="false"
@@ -107,7 +107,7 @@
     </PropertyGroup>
 
     <!-- Run C# console app to check logs (only if logs directory exists) -->
-    <Exec Command="dotnet run .build\check-test-logs.cs &quot;$(LogsDirectory)&quot;"
+    <Exec Command="dotnet run .build/check-test-logs.cs &quot;$(LogsDirectory)&quot;"
           Condition="Exists('$(LogsDirectory)')"
           ContinueOnError="true"
           IgnoreExitCode="false"
@@ -124,7 +124,7 @@
     </PropertyGroup>
 
     <!-- Run C# console app to analyze test times (only if TRX directory exists) -->
-    <Exec Command="dotnet run .build\analyze-test-times.cs &quot;$(TrxDirectory)&quot;"
+    <Exec Command="dotnet run .build/analyze-test-times.cs &quot;$(TrxDirectory)&quot;"
           Condition="Exists('$(TrxDirectory)')"
           ContinueOnError="true"
           IgnoreExitCode="false"
@@ -142,7 +142,7 @@
 
     <!-- Run C# console app to display coverage summary (only once at the end) -->
     <!-- Capture output and echo via Message to ensure visibility at all verbosity levels -->
-    <Exec Command="dotnet run .build\display-coverage-summary.cs $(CoverageSummaryFile)"
+    <Exec Command="dotnet run .build/display-coverage-summary.cs $(CoverageSummaryFile)"
           Condition="Exists('$(CoverageSummaryFile)')"
           ContinueOnError="true"
           IgnoreExitCode="false"
