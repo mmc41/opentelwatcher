@@ -13,6 +13,17 @@ namespace OpenTelWatcher.Tests.E2E;
 /// <summary>
 /// Helper class for building OpenTelemetry protobuf objects in E2E tests.
 /// Reduces code duplication by providing reusable builder methods with sensible defaults.
+///
+/// Design Note: This is a more comprehensive version compared to unit_tests/Helpers/TestBuilders.cs.
+/// The duplication is intentional to keep test projects independent:
+/// - TestBuilders (unit tests): Simpler, focused on unit test scenarios with minimal setup
+/// - ProtobufBuilders (E2E tests): More comprehensive, with extension methods and flexible parameters
+///
+/// This class provides:
+/// - Flexible builder methods with optional parameters for realistic test data
+/// - Extension methods (WithAttributes) for fluent test setup
+/// - Support for all signal types (traces, logs, metrics)
+/// - Realistic defaults (proper timestamps, trace IDs, etc.)
 /// </summary>
 public static class ProtobufBuilders
 {

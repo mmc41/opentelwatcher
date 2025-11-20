@@ -12,7 +12,15 @@ using Google.Protobuf;
 namespace UnitTests.Helpers;
 
 /// <summary>
-/// Fluent builders for common test objects to reduce duplication.
+/// Fluent builders for common test objects to reduce duplication in unit tests.
+///
+/// Design Note: This is a simpler version compared to e2e_tests/Helpers/ProtobufBuilders.cs.
+/// The duplication is intentional to keep test projects independent:
+/// - TestBuilders: Simpler, focused on unit test scenarios with minimal setup
+/// - ProtobufBuilders: More comprehensive, with extension methods and flexible parameters for E2E tests
+///
+/// If adding new builders, consider whether they belong in unit tests (simple mocks)
+/// or E2E tests (realistic data with full protobuf structure).
 /// </summary>
 public static class TestBuilders
 {

@@ -6,7 +6,7 @@ using Xunit;
 
 namespace UnitTests.Services;
 
-public class FileRotationServiceTests
+public class FileRotationServiceTests : FileBasedTestBase
 {
     [Fact]
     public void GenerateNewFilePath_WithValidInputs_ReturnsCorrectFormat()
@@ -66,22 +66,14 @@ public class FileRotationServiceTests
     {
         // Arrange
         var service = new FileRotationService(new MockTimeProvider());
-        var tempFile = Path.GetTempFileName();
-        try
-        {
-            File.WriteAllText(tempFile, "small content");
+        var tempFile = Path.Combine(TestOutputDir, "small-file.ndjson");
+        File.WriteAllText(tempFile, "small content");
 
-            // Act
-            var shouldRotate = service.ShouldRotate(tempFile, maxFileSizeMB: 100);
+        // Act
+        var shouldRotate = service.ShouldRotate(tempFile, maxFileSizeMB: 100);
 
-            // Assert
-            shouldRotate.Should().BeFalse();
-        }
-        finally
-        {
-            if (File.Exists(tempFile))
-                File.Delete(tempFile);
-        }
+        // Assert
+        shouldRotate.Should().BeFalse("file is smaller than max size limit");
     }
 
     [Fact]
@@ -89,24 +81,17 @@ public class FileRotationServiceTests
     {
         // Arrange
         var service = new FileRotationService(new MockTimeProvider());
-        var tempFile = Path.GetTempFileName();
-        try
-        {
-            // Create a file larger than 1MB (1MB = 1048576 bytes)
-            var largeContent = new string('x', 1048576 + 100);
-            File.WriteAllText(tempFile, largeContent);
+        var tempFile = Path.Combine(TestOutputDir, "large-file.ndjson");
 
-            // Act
-            var shouldRotate = service.ShouldRotate(tempFile, maxFileSizeMB: 1);
+        // Create a file larger than 1MB (1MB = 1048576 bytes)
+        var largeContent = new string('x', 1048576 + 100);
+        File.WriteAllText(tempFile, largeContent);
 
-            // Assert
-            shouldRotate.Should().BeTrue();
-        }
-        finally
-        {
-            if (File.Exists(tempFile))
-                File.Delete(tempFile);
-        }
+        // Act
+        var shouldRotate = service.ShouldRotate(tempFile, maxFileSizeMB: 1);
+
+        // Assert
+        shouldRotate.Should().BeTrue("file is larger than max size limit");
     }
 
     [Fact]
@@ -114,24 +99,16 @@ public class FileRotationServiceTests
     {
         // Arrange
         var service = new FileRotationService(new MockTimeProvider());
-        var outputDir = Path.Combine(Path.GetTempPath(), "telemetry-test-" + Guid.NewGuid());
+        var outputDir = Path.Combine(TestOutputDir, "telemetry-test");
         var signal = SignalType.Traces;
 
-        try
-        {
-            // Act
-            var filePath = service.GetOrCreateFilePath(outputDir, signal);
+        // Act
+        var filePath = service.GetOrCreateFilePath(outputDir, signal);
 
-            // Assert
-            filePath.Should().StartWith(outputDir);
-            filePath.Should().EndWith(".ndjson");
-            Directory.Exists(outputDir).Should().BeTrue();
-        }
-        finally
-        {
-            if (Directory.Exists(outputDir))
-                Directory.Delete(outputDir, recursive: true);
-        }
+        // Assert
+        filePath.Should().StartWith(outputDir);
+        filePath.Should().EndWith(".ndjson");
+        Directory.Exists(outputDir).Should().BeTrue("directory should be created if it doesn't exist");
     }
 
     [Fact]
@@ -139,23 +116,15 @@ public class FileRotationServiceTests
     {
         // Arrange
         var service = new FileRotationService(new MockTimeProvider());
-        var outputDir = Path.Combine(Path.GetTempPath(), "telemetry-test-" + Guid.NewGuid());
+        var outputDir = Path.Combine(TestOutputDir, "telemetry-test");
         var signal = SignalType.Traces;
 
-        try
-        {
-            // Act
-            var filePath1 = service.GetOrCreateFilePath(outputDir, signal);
-            var filePath2 = service.GetOrCreateFilePath(outputDir, signal);
+        // Act
+        var filePath1 = service.GetOrCreateFilePath(outputDir, signal);
+        var filePath2 = service.GetOrCreateFilePath(outputDir, signal);
 
-            // Assert
-            filePath1.Should().Be(filePath2);
-        }
-        finally
-        {
-            if (Directory.Exists(outputDir))
-                Directory.Delete(outputDir, recursive: true);
-        }
+        // Assert
+        filePath1.Should().Be(filePath2, "subsequent calls should return cached file path");
     }
 
     [Fact]
@@ -163,29 +132,21 @@ public class FileRotationServiceTests
     {
         // Arrange
         var service = new FileRotationService(new MockTimeProvider());
-        var outputDir = Path.Combine(Path.GetTempPath(), "telemetry-test-" + Guid.NewGuid());
+        var outputDir = Path.Combine(TestOutputDir, "telemetry-test");
 
-        try
-        {
-            // Act
-            var tracesPath = service.GetOrCreateFilePath(outputDir, SignalType.Traces);
-            var logsPath = service.GetOrCreateFilePath(outputDir, SignalType.Logs);
-            var metricsPath = service.GetOrCreateFilePath(outputDir, SignalType.Metrics);
+        // Act
+        var tracesPath = service.GetOrCreateFilePath(outputDir, SignalType.Traces);
+        var logsPath = service.GetOrCreateFilePath(outputDir, SignalType.Logs);
+        var metricsPath = service.GetOrCreateFilePath(outputDir, SignalType.Metrics);
 
-            // Assert
-            tracesPath.Should().NotBe(logsPath);
-            logsPath.Should().NotBe(metricsPath);
-            tracesPath.Should().NotBe(metricsPath);
+        // Assert
+        tracesPath.Should().NotBe(logsPath);
+        logsPath.Should().NotBe(metricsPath);
+        tracesPath.Should().NotBe(metricsPath);
 
-            tracesPath.Should().Contain("traces.");
-            logsPath.Should().Contain("logs.");
-            metricsPath.Should().Contain("metrics.");
-        }
-        finally
-        {
-            if (Directory.Exists(outputDir))
-                Directory.Delete(outputDir, recursive: true);
-        }
+        tracesPath.Should().Contain("traces.", "traces signal should have 'traces' in filename");
+        logsPath.Should().Contain("logs.", "logs signal should have 'logs' in filename");
+        metricsPath.Should().Contain("metrics.", "metrics signal should have 'metrics' in filename");
     }
 
     #region RotateFile Tests
@@ -195,25 +156,17 @@ public class FileRotationServiceTests
     {
         // Arrange
         var service = new FileRotationService(new MockTimeProvider());
-        var outputDir = Path.Combine(Path.GetTempPath(), "telemetry-test-" + Guid.NewGuid());
+        var outputDir = Path.Combine(TestOutputDir, "telemetry-test");
         var signal = SignalType.Traces;
 
-        try
-        {
-            // Act
-            var filePath = service.RotateFile(outputDir, signal);
+        // Act
+        var filePath = service.RotateFile(outputDir, signal);
 
-            // Assert
-            filePath.Should().StartWith(outputDir);
-            filePath.Should().EndWith(".ndjson");
-            filePath.Should().Contain("traces.");
-            Directory.Exists(outputDir).Should().BeTrue();
-        }
-        finally
-        {
-            if (Directory.Exists(outputDir))
-                Directory.Delete(outputDir, recursive: true);
-        }
+        // Assert
+        filePath.Should().StartWith(outputDir);
+        filePath.Should().EndWith(".ndjson");
+        filePath.Should().Contain("traces.", "filename should include signal type");
+        Directory.Exists(outputDir).Should().BeTrue("directory should be created if it doesn't exist");
     }
 
     [Fact]
@@ -222,29 +175,21 @@ public class FileRotationServiceTests
         // Arrange
         var timeProvider = new MockTimeProvider();
         var service = new FileRotationService(timeProvider);
-        var outputDir = Path.Combine(Path.GetTempPath(), "telemetry-test-" + Guid.NewGuid());
+        var outputDir = Path.Combine(TestOutputDir, "telemetry-test");
         var signal = SignalType.Traces;
 
-        try
-        {
-            // Act
-            var filePath1 = service.RotateFile(outputDir, signal);
+        // Act
+        var filePath1 = service.RotateFile(outputDir, signal);
 
-            // Advance time to ensure different timestamp
-            timeProvider.AdvanceTime(TimeSpan.FromMilliseconds(1));
+        // Advance time to ensure different timestamp
+        timeProvider.AdvanceTime(TimeSpan.FromMilliseconds(1));
 
-            var filePath2 = service.RotateFile(outputDir, signal);
+        var filePath2 = service.RotateFile(outputDir, signal);
 
-            // Assert
-            filePath1.Should().NotBe(filePath2);
-            filePath1.Should().Contain("traces.");
-            filePath2.Should().Contain("traces.");
-        }
-        finally
-        {
-            if (Directory.Exists(outputDir))
-                Directory.Delete(outputDir, recursive: true);
-        }
+        // Assert
+        filePath1.Should().NotBe(filePath2, "each rotation should generate a new file with unique timestamp");
+        filePath1.Should().Contain("traces.", "filename should include signal type");
+        filePath2.Should().Contain("traces.", "filename should include signal type");
     }
 
     [Fact]
@@ -252,26 +197,18 @@ public class FileRotationServiceTests
     {
         // Arrange
         var service = new FileRotationService(new MockTimeProvider());
-        var outputDir = Path.Combine(Path.GetTempPath(), "telemetry-test-" + Guid.NewGuid());
+        var outputDir = Path.Combine(TestOutputDir, "telemetry-test");
         var signal = SignalType.Logs;
 
-        try
-        {
-            // Verify directory doesn't exist before rotation
-            Directory.Exists(outputDir).Should().BeFalse();
+        // Verify directory doesn't exist before rotation
+        Directory.Exists(outputDir).Should().BeFalse("directory should not exist before first rotation");
 
-            // Act
-            var filePath = service.RotateFile(outputDir, signal);
+        // Act
+        var filePath = service.RotateFile(outputDir, signal);
 
-            // Assert
-            Directory.Exists(outputDir).Should().BeTrue();
-            filePath.Should().StartWith(outputDir);
-        }
-        finally
-        {
-            if (Directory.Exists(outputDir))
-                Directory.Delete(outputDir, recursive: true);
-        }
+        // Assert
+        Directory.Exists(outputDir).Should().BeTrue("directory should be created during rotation");
+        filePath.Should().StartWith(outputDir);
     }
 
     [Fact]
@@ -280,30 +217,22 @@ public class FileRotationServiceTests
         // Arrange
         var timeProvider = new MockTimeProvider();
         var service = new FileRotationService(timeProvider);
-        var outputDir = Path.Combine(Path.GetTempPath(), "telemetry-test-" + Guid.NewGuid());
+        var outputDir = Path.Combine(TestOutputDir, "telemetry-test");
         var signal = SignalType.Metrics;
 
-        try
-        {
-            // Act
-            var initialPath = service.GetOrCreateFilePath(outputDir, signal);
+        // Act
+        var initialPath = service.GetOrCreateFilePath(outputDir, signal);
 
-            // Advance time and rotate
-            timeProvider.AdvanceTime(TimeSpan.FromSeconds(1));
-            var rotatedPath = service.RotateFile(outputDir, signal);
+        // Advance time and rotate
+        timeProvider.AdvanceTime(TimeSpan.FromSeconds(1));
+        var rotatedPath = service.RotateFile(outputDir, signal);
 
-            // Get the cached path again
-            var cachedPath = service.GetOrCreateFilePath(outputDir, signal);
+        // Get the cached path again
+        var cachedPath = service.GetOrCreateFilePath(outputDir, signal);
 
-            // Assert
-            cachedPath.Should().Be(rotatedPath);
-            cachedPath.Should().NotBe(initialPath);
-        }
-        finally
-        {
-            if (Directory.Exists(outputDir))
-                Directory.Delete(outputDir, recursive: true);
-        }
+        // Assert
+        cachedPath.Should().Be(rotatedPath, "cached path should be updated to rotated path");
+        cachedPath.Should().NotBe(initialPath, "rotated path should differ from initial path");
     }
 
     [Fact]
@@ -311,31 +240,23 @@ public class FileRotationServiceTests
     {
         // Arrange
         var service = new FileRotationService(new MockTimeProvider());
-        var outputDir = Path.Combine(Path.GetTempPath(), "telemetry-test-" + Guid.NewGuid());
+        var outputDir = Path.Combine(TestOutputDir, "telemetry-test");
         var signal = SignalType.Traces;
 
-        try
+        // Act - Call RotateFile concurrently from multiple threads
+        var tasks = Enumerable.Range(0, 10).Select(i => Task.Run(() =>
         {
-            // Act - Call RotateFile concurrently from multiple threads
-            var tasks = Enumerable.Range(0, 10).Select(i => Task.Run(() =>
-            {
-                return service.RotateFile(outputDir, signal);
-            })).ToArray();
+            return service.RotateFile(outputDir, signal);
+        })).ToArray();
 
-            var results = await Task.WhenAll(tasks);
+        var results = await Task.WhenAll(tasks);
 
-            // Assert - All calls should complete without exception
-            results.Should().HaveCount(10);
-            results.Should().OnlyContain(path => path.Contains(signal.ToLowerString()));
+        // Assert - All calls should complete without exception
+        results.Should().HaveCount(10, "all concurrent calls should complete");
+        results.Should().OnlyContain(path => path.Contains(signal.ToLowerString()), "all paths should contain signal type");
 
-            // All threads should have gotten valid paths (semaphore protected the operation)
-            results.Should().OnlyContain(path => !string.IsNullOrEmpty(path));
-        }
-        finally
-        {
-            if (Directory.Exists(outputDir))
-                Directory.Delete(outputDir, recursive: true);
-        }
+        // All threads should have gotten valid paths (semaphore protected the operation)
+        results.Should().OnlyContain(path => !string.IsNullOrEmpty(path), "all paths should be non-empty");
     }
 
     #endregion
@@ -347,25 +268,17 @@ public class FileRotationServiceTests
     {
         // Arrange
         var service = new FileRotationService(new MockTimeProvider());
-        var outputDir = Path.Combine(Path.GetTempPath(), "telemetry-test-" + Guid.NewGuid());
+        var outputDir = Path.Combine(TestOutputDir, "telemetry-test");
 
-        try
-        {
-            // Create some semaphores by rotating files
-            service.RotateFile(outputDir, SignalType.Traces);
-            service.RotateFile(outputDir, SignalType.Logs);
+        // Create some semaphores by rotating files
+        service.RotateFile(outputDir, SignalType.Traces);
+        service.RotateFile(outputDir, SignalType.Logs);
 
-            // Act - Dispose multiple times
-            service.Dispose();
-            service.Dispose(); // Should not throw
+        // Act - Dispose multiple times
+        service.Dispose();
+        service.Dispose(); // Should not throw
 
-            // Assert - No exception thrown
-        }
-        finally
-        {
-            if (Directory.Exists(outputDir))
-                Directory.Delete(outputDir, recursive: true);
-        }
+        // Assert - No exception thrown (FluentAssertions not needed for this test)
     }
 
     #endregion

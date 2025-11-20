@@ -180,14 +180,25 @@ public class ErrorFilesTests
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK);
 
-        // By getting reponse we effectively wait for file to be written by server (avoiding having to wait)
+        // Ensure response body is fully consumed to synchronize with server processing
         await response.Content.ReadAsStringAsync(cancellationToken: TestContext.Current.CancellationToken);
 
-        // In case of dir changes we stiill ned to wait a moment to ensure any file write would have occurred
-        await Task.Delay(E2EConstants.Delays.FileWriteSettlingMs, TestContext.Current.CancellationToken);
+        // Wait and verify that error file count remains unchanged (no new error files appear)
+        var fileCountStabilized = await PollingHelpers.WaitForConditionAsync(
+            condition: () =>
+            {
+                var currentCount = Directory.GetFiles(outputDirectory, "traces.*.errors.ndjson").Length;
+                return currentCount == errorFilesBefore;
+            },
+            timeoutMs: E2EConstants.Timeouts.FileWriteMs,
+            pollingIntervalMs: E2EConstants.Delays.StandardPollingMs,
+            cancellationToken: TestContext.Current.CancellationToken,
+            logger: _logger,
+            conditionDescription: "error file count to remain unchanged");
 
+        fileCountStabilized.Should().BeTrue("no new error files should appear for trace without errors");
 
-        // No new error files should be created
+        // Verify final count matches expected
         var errorFilesAfter = Directory.GetFiles(outputDirectory, "traces.*.errors.ndjson").Length;
         errorFilesAfter.Should().Be(errorFilesBefore, "no error file should be created for trace without errors");
     }
@@ -211,13 +222,25 @@ public class ErrorFilesTests
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK);
 
-        // By getting reponse we effectively wait for file to be written by server (avoiding having to wait)
+        // Ensure response body is fully consumed to synchronize with server processing
         await response.Content.ReadAsStringAsync(cancellationToken: TestContext.Current.CancellationToken);
 
-        // In case of dir changes we stiill ned to wait a moment to ensure any file write would have occurred
-        await Task.Delay(E2EConstants.Delays.FileWriteSettlingMs, TestContext.Current.CancellationToken);
+        // Wait and verify that error file count remains unchanged (no new error files appear)
+        var fileCountStabilized = await PollingHelpers.WaitForConditionAsync(
+            condition: () =>
+            {
+                var currentCount = Directory.GetFiles(outputDirectory, "logs.*.errors.ndjson").Length;
+                return currentCount == errorFilesBefore;
+            },
+            timeoutMs: E2EConstants.Timeouts.FileWriteMs,
+            pollingIntervalMs: E2EConstants.Delays.StandardPollingMs,
+            cancellationToken: TestContext.Current.CancellationToken,
+            logger: _logger,
+            conditionDescription: "error file count to remain unchanged");
 
-        // No new error files should be created
+        fileCountStabilized.Should().BeTrue("no new error files should appear for log without errors");
+
+        // Verify final count matches expected
         var errorFilesAfter = Directory.GetFiles(outputDirectory, "logs.*.errors.ndjson").Length;
         errorFilesAfter.Should().Be(errorFilesBefore, "no error file should be created for log without errors");
     }

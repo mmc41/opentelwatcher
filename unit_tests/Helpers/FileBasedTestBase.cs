@@ -17,6 +17,7 @@ public abstract class FileBasedTestBase : IDisposable
         TestOutputDir = Path.Combine(Path.GetTempPath(), $"{GetType().Name}-{Guid.NewGuid()}");
         Directory.CreateDirectory(TestOutputDir);
         _logger = TestLoggerFactory.CreateLogger(GetType());
+        _logger.LogDebug("Created test directory: {TestOutputDir}", TestOutputDir);
     }
 
     public void Dispose()
