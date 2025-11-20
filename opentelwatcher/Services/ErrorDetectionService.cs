@@ -84,8 +84,7 @@ public class ErrorDetectionService : IErrorDetectionService
 
                 foreach (var logRecord in scopeLog.LogRecords)
                 {
-                    // Check severity number for ERROR or FATAL levels
-                    // SeverityNumber is an enum, cast to int for comparison
+                    // SeverityNumber is enum, cast to int for threshold comparison
                     if ((int)logRecord.SeverityNumber >= ErrorSeverityThreshold)
                         return true;
 
