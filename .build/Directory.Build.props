@@ -1,0 +1,29 @@
+<Project>
+  <!--
+    PURPOSE: Override parent Directory.Build.props for .NET 10 single-file app scripts in .build/
+
+    WHY THIS FILE IS NEEDED:
+    - The root Directory.Build.props redirects all build outputs to artifacts/ directory
+    - This breaks 'dotnet run .build/script.cs' because:
+      1. dotnet run creates a temporary project for the script
+      2. The parent Directory.Build.props applies to this temp project
+      3. The script builds to artifacts\bin\script-name\ instead of the default location
+      4. dotnet run can't find the executable and fails with:
+         "An error occurred trying to start process 'artifacts\bin\script-name\script-name.exe'"
+    - This file resets output paths to defaults so single-file apps work correctly
+
+    IMPACT:
+    - Without this file: All three build automation scripts (extract-coverage-summary,
+      check-test-logs, analyze-test-times) fail with MSB3073 warnings during test runs
+    - With this file: Scripts execute normally and test automation works as expected
+  -->
+
+  <PropertyGroup>
+    <!-- Reset output paths to .NET SDK defaults (relative to script directory) -->
+    <BaseOutputPath>bin\</BaseOutputPath>
+    <BaseIntermediateOutputPath>obj\</BaseIntermediateOutputPath>
+    <OutputPath>$(BaseOutputPath)$(Configuration)\</OutputPath>
+    <IntermediateOutputPath>$(BaseIntermediateOutputPath)$(Configuration)\</IntermediateOutputPath>
+  </PropertyGroup>
+
+</Project>
