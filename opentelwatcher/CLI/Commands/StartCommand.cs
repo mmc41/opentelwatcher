@@ -7,14 +7,22 @@ using OpenTelWatcher.CLI.Models;
 using OpenTelWatcher.CLI.Services;
 using OpenTelWatcher.Hosting;
 using OpenTelWatcher.Services.Interfaces;
+using OpenTelWatcher.Utilities;
 using static OpenTelWatcher.Configuration.DefaultPorts;
 
 namespace OpenTelWatcher.CLI.Commands;
 
 /// <summary>
-/// Start command - launches watcher service.
-/// Actually starts the web server using IWebApplicationHost.
+/// Executes server startup business logic for the 'opentelwatcher start' command.
+/// Performs pre-flight checks (existing instance detection, version compatibility), validates configuration,
+/// creates output directory, and launches ASP.NET Core web server via IWebApplicationHost. Supports foreground
+/// (blocking) and background (--daemon) modes with health checking. Registers process in PID file for multi-instance
+/// coordination. StartCommandBuilder creates the CLI structure; this class contains the actual startup logic.
 /// </summary>
+/// <remarks>
+/// Scope: Server lifecycle (validate, start, register), health checks, daemon forking, error handling.
+/// Builder: StartCommandBuilder constructs options → This class: Executes server startup via IWebApplicationHost
+/// </remarks>
 public sealed class StartCommand
 {
     private readonly ILogger<StartCommand> _logger;
@@ -178,7 +186,7 @@ public sealed class StartCommand
         if (serverOptions.EnableTails && !silent)
         {
             var filterMode = serverOptions.TailsFilterErrorsOnly ? "(errors only)" : "(all signals)";
-            Console.WriteLine($"Monitoring telemetry output {filterMode}");
+            Console.WriteLine($"Monitoring telemetry output {filterMode}.");
             Console.WriteLine("Press Ctrl+C to stop...\\n");
         }
 
@@ -192,7 +200,7 @@ public sealed class StartCommand
             // Display shutdown message if tails enabled
             if (serverOptions.EnableTails && !silent && exitCode == 0)
             {
-                Console.WriteLine("\\nMonitoring stopped");
+                Console.WriteLine("\\nMonitoring stopped.");
             }
 
             OutputResult(result, jsonOutput, silent, isError: exitCode != 0, errorType: exitCode != 0 ? "Server exited with error" : null);
@@ -213,25 +221,17 @@ public sealed class StartCommand
 
     private void OutputResult(Dictionary<string, object> result, bool jsonOutput, bool silent, bool isError, string? errorType = null)
     {
-        if (jsonOutput)
+        CommandOutputFormatter.Output(result, jsonOutput, silent, _ =>
         {
-            Console.WriteLine(JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));
-            return;
-        }
-
-        if (silent)
-        {
-            return;
-        }
-
-        if (isError)
-        {
-            OutputErrorText(result, errorType!);
-        }
-        else
-        {
-            OutputSuccessText(result);
-        }
+            if (isError)
+            {
+                OutputErrorText(result, errorType!);
+            }
+            else
+            {
+                OutputSuccessText(result);
+            }
+        });
     }
 
     private void OutputErrorText(Dictionary<string, object> result, string errorType)
@@ -239,7 +239,7 @@ public sealed class StartCommand
         switch (errorType)
         {
             case "Instance already running":
-                Console.WriteLine($"Instance already running on port {result["port"]}");
+                Console.WriteLine($"Instance already running on port {result["port"]}.");
                 Console.WriteLine((string)result["message"]);
                 break;
 
@@ -249,7 +249,7 @@ public sealed class StartCommand
                 break;
 
             case "Incompatible instance":
-                Console.WriteLine($"Incompatible instance detected on port {result["port"]}");
+                Console.WriteLine($"Incompatible instance detected on port {result["port"]}.");
                 Console.WriteLine($"  {result["reason"]}");
                 Console.WriteLine();
                 Console.WriteLine("Stop the incompatible instance before starting a new one.");
@@ -264,13 +264,13 @@ public sealed class StartCommand
                 break;
 
             case "Directory creation failed":
-                Console.WriteLine("Error: Cannot create output directory");
+                Console.WriteLine("Error: Cannot create output directory.");
                 Console.WriteLine($"  Path: {result["path"]}");
                 Console.WriteLine($"  Details: {result["details"]}");
                 break;
 
             case "Server failed to start":
-                Console.Error.WriteLine($"Error starting server: {result["details"]}");
+                Console.Error.WriteLine($"Error: Failed to start server: {result["details"]}");
                 break;
 
             case "Server exited with error":
@@ -407,7 +407,7 @@ public sealed class StartCommand
             }
             else if (!silent)
             {
-                Console.WriteLine($"Error: Cannot create output directory: {ex.Message}");
+                Console.WriteLine($"Error: Cannot create output directory: {ex.Message}.");
             }
 
             return CommandResult.SystemError("Cannot create output directory");
@@ -422,7 +422,7 @@ public sealed class StartCommand
         var currentProcess = Environment.ProcessPath;
         if (string.IsNullOrEmpty(currentProcess))
         {
-            Console.WriteLine("Error: Cannot determine process path");
+            Console.WriteLine("Error: Cannot determine process path.");
             Console.WriteLine("This may indicate an unusual deployment scenario.");
             return ProcessExecutionInfo.Invalid("Cannot determine process path");
         }
@@ -481,7 +481,7 @@ public sealed class StartCommand
             // Linux/macOS: Use nohup for proper daemon behavior
             if (!IsNohupAvailable())
             {
-                Console.WriteLine("Error: 'nohup' command not found");
+                Console.WriteLine("Error: 'nohup' command not found.");
                 Console.WriteLine();
                 Console.WriteLine("Daemon mode on Linux/macOS requires 'nohup' (from coreutils) to be installed.");
                 Console.WriteLine();
@@ -572,7 +572,7 @@ public sealed class StartCommand
         }
         else if (!options.Silent)
         {
-            Console.WriteLine($"Error: Watcher failed to start (no response after {ApiConstants.Timeouts.HealthCheckSeconds} seconds)");
+            Console.WriteLine($"Error: Watcher failed to start (no response after {ApiConstants.Timeouts.HealthCheckSeconds} seconds).");
 
             // Display details
             foreach (var detail in errorDetails)

@@ -46,4 +46,15 @@ public interface IEnvironment
     /// <param name="name">The name of the environment variable.</param>
     /// <returns>The value of the environment variable, or null if not found.</returns>
     string? GetEnvironmentVariable(string name);
+
+    /// <summary>
+    /// Gets the appropriate runtime directory for storing process data (PID files, locks, etc.).
+    /// Returns platform-appropriate directory based on deployment scenario.
+    /// </summary>
+    /// <returns>
+    /// - Development/testing: Executable directory if running from artifacts
+    /// - Linux/macOS: XDG_RUNTIME_DIR if available
+    /// - Fallback: System temp directory
+    /// </returns>
+    string GetRuntimeDirectory();
 }

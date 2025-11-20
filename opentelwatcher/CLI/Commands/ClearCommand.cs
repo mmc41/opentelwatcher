@@ -8,8 +8,16 @@ using OpenTelWatcher.Utilities;
 namespace OpenTelWatcher.CLI.Commands;
 
 /// <summary>
-/// Clear command - clears telemetry data files from running instance or directly
+/// Executes telemetry file deletion business logic for the 'opentelwatcher clear' command in dual modes.
+/// Instance mode: Queries GET /api/status for output directory, validates --output-dir matches (if specified),
+/// calls POST /api/clear. Standalone mode (no instance): Uses TelemetryCleaner utility for direct file deletion.
+/// Both modes display before/after statistics (file counts, space freed). Prevents accidental data loss via
+/// directory validation. ClearCommandBuilder creates CLI structure; this class handles mode detection and cleanup.
 /// </summary>
+/// <remarks>
+/// Scope: Telemetry file deletion, directory validation, statistics display, dual-mode coordination.
+/// Builder: ClearCommandBuilder resolves port/fallback → This class: Executes cleanup via API or TelemetryCleaner
+/// </remarks>
 public sealed class ClearCommand
 {
     private readonly IOpenTelWatcherApiClient _apiClient;
@@ -183,25 +191,17 @@ public sealed class ClearCommand
 
     private void OutputResult(Dictionary<string, object> result, bool jsonOutput, bool silent, bool isError, string? errorType = null, string? messageType = null, bool verbose = false)
     {
-        if (jsonOutput)
+        CommandOutputFormatter.Output(result, jsonOutput, silent, _ =>
         {
-            Console.WriteLine(JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));
-            return;
-        }
-
-        if (silent)
-        {
-            return;
-        }
-
-        if (isError)
-        {
-            OutputErrorText(result, errorType!);
-        }
-        else
-        {
-            OutputSuccessText(result, messageType, verbose);
-        }
+            if (isError)
+            {
+                OutputErrorText(result, errorType!);
+            }
+            else
+            {
+                OutputSuccessText(result, messageType, verbose);
+            }
+        });
     }
 
     private void OutputErrorText(Dictionary<string, object> result, string errorType)
@@ -209,11 +209,11 @@ public sealed class ClearCommand
         switch (errorType)
         {
             case "Failed to retrieve info":
-                Console.WriteLine($"Error: {result["error"]}");
+                Console.WriteLine($"Error: {result["error"]}.");
                 break;
 
             case "Directory mismatch":
-                Console.WriteLine($"Error: {result["error"]}");
+                Console.WriteLine($"Error: {result["error"]}.");
                 Console.WriteLine($"  Requested directory: {result["requestedDirectory"]}");
                 Console.WriteLine($"  Instance directory:  {result["instanceDirectory"]}");
                 Console.WriteLine();
@@ -223,11 +223,11 @@ public sealed class ClearCommand
                 break;
 
             case "Clear failed":
-                Console.WriteLine($"Error: {result["error"]}");
+                Console.WriteLine($"Error: {result["error"]}.");
                 break;
 
             case "Exception":
-                Console.WriteLine($"Error clearing telemetry data: {result["details"]}");
+                Console.WriteLine($"Error: Failed to clear telemetry data: {result["details"]}.");
                 break;
         }
     }
@@ -236,7 +236,7 @@ public sealed class ClearCommand
     {
         if (messageType == "Directory not found")
         {
-            Console.WriteLine($"Directory not found: {result["outputDirectory"]}");
+            Console.WriteLine($"Directory not found: {result["outputDirectory"]}.");
             Console.WriteLine("No files to clear.");
         }
         else

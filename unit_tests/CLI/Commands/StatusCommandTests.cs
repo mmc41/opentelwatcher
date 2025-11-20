@@ -1,6 +1,7 @@
 using FluentAssertions;
 using OpenTelWatcher.CLI.Commands;
 using OpenTelWatcher.CLI.Models;
+using OpenTelWatcher.Services;
 using UnitTests.Helpers;
 using UnitTests.Mocks;
 using Xunit;
@@ -39,10 +40,10 @@ public class StatusCommandTests : IDisposable
         {
             InstanceStatus = new InstanceStatus { IsRunning = false }
         };
-        var command = new StatusCommand(mockApiClient);
+        var command = new StatusCommand(mockApiClient, new MockPortResolver(), TestLoggerFactory.CreateLogger<StatusCommand>(), new ErrorFileScanner());
 
         // Act
-        var result = await command.ExecuteAsync(quiet: true, jsonOutput: true);
+        var result = await command.ExecuteAsync(new StatusOptions { Port = null, Quiet = true }, jsonOutput: true);
 
         // Assert
         result.ExitCode.Should().Be(2); // System error
@@ -58,10 +59,10 @@ public class StatusCommandTests : IDisposable
             InstanceStatus = new InstanceStatus { IsRunning = true, IsCompatible = true },
             StatusResponse = null // API call fails
         };
-        var command = new StatusCommand(mockApiClient);
+        var command = new StatusCommand(mockApiClient, new MockPortResolver(), TestLoggerFactory.CreateLogger<StatusCommand>(), new ErrorFileScanner());
 
         // Act
-        var result = await command.ExecuteAsync(quiet: true, jsonOutput: true);
+        var result = await command.ExecuteAsync(new StatusOptions { Port = null, Quiet = true }, jsonOutput: true);
 
         // Assert
         result.ExitCode.Should().Be(2); // System error
@@ -88,10 +89,10 @@ public class StatusCommandTests : IDisposable
             },
             StatusResponse = TestBuilders.CreateStatusResponse(_testOutputDir)
         };
-        var command = new StatusCommand(mockApiClient);
+        var command = new StatusCommand(mockApiClient, new MockPortResolver(), TestLoggerFactory.CreateLogger<StatusCommand>(), new ErrorFileScanner());
 
         // Act
-        var result = await command.ExecuteAsync(quiet: true, jsonOutput: true);
+        var result = await command.ExecuteAsync(new StatusOptions { Port = null, Quiet = true }, jsonOutput: true);
 
         // Assert
         result.ExitCode.Should().Be(0); // Success
@@ -110,10 +111,10 @@ public class StatusCommandTests : IDisposable
             InstanceStatus = new InstanceStatus { IsRunning = true, IsCompatible = true },
             StatusResponse = TestBuilders.CreateStatusResponse(_testOutputDir)
         };
-        var command = new StatusCommand(mockApiClient);
+        var command = new StatusCommand(mockApiClient, new MockPortResolver(), TestLoggerFactory.CreateLogger<StatusCommand>(), new ErrorFileScanner());
 
         // Act
-        var result = await command.ExecuteAsync(quiet: true, jsonOutput: true);
+        var result = await command.ExecuteAsync(new StatusOptions { Port = null, Quiet = true }, jsonOutput: true);
 
         // Assert
         result.ExitCode.Should().Be(1); // User error (unhealthy)
@@ -132,10 +133,10 @@ public class StatusCommandTests : IDisposable
             InstanceStatus = new InstanceStatus { IsRunning = true, IsCompatible = true },
             StatusResponse = TestBuilders.CreateStatusResponse(_testOutputDir)
         };
-        var command = new StatusCommand(mockApiClient);
+        var command = new StatusCommand(mockApiClient, new MockPortResolver(), TestLoggerFactory.CreateLogger<StatusCommand>(), new ErrorFileScanner());
 
         // Act
-        var result = await command.ExecuteAsync(errorsOnly: true, quiet: true, jsonOutput: true);
+        var result = await command.ExecuteAsync(new StatusOptions { Port = null, ErrorsOnly = true, Quiet = true }, jsonOutput: true);
 
         // Assert
         result.ExitCode.Should().Be(1); // Errors detected
@@ -156,10 +157,10 @@ public class StatusCommandTests : IDisposable
             InstanceStatus = new InstanceStatus { IsRunning = true, IsCompatible = true },
             StatusResponse = TestBuilders.CreateStatusResponse(_testOutputDir)
         };
-        var command = new StatusCommand(mockApiClient);
+        var command = new StatusCommand(mockApiClient, new MockPortResolver(), TestLoggerFactory.CreateLogger<StatusCommand>(), new ErrorFileScanner());
 
         // Act
-        var result = await command.ExecuteAsync(errorsOnly: true, verbose: true, quiet: true, jsonOutput: true);
+        var result = await command.ExecuteAsync(new StatusOptions { Port = null, ErrorsOnly = true, Verbose = true, Quiet = true }, jsonOutput: true);
 
         // Assert
         result.ExitCode.Should().Be(1); // Errors detected
@@ -176,10 +177,10 @@ public class StatusCommandTests : IDisposable
             InstanceStatus = new InstanceStatus { IsRunning = true, IsCompatible = true },
             StatusResponse = TestBuilders.CreateStatusResponse(_testOutputDir)
         };
-        var command = new StatusCommand(mockApiClient);
+        var command = new StatusCommand(mockApiClient, new MockPortResolver(), TestLoggerFactory.CreateLogger<StatusCommand>(), new ErrorFileScanner());
 
         // Act
-        var result = await command.ExecuteAsync(errorsOnly: true, quiet: true, jsonOutput: true);
+        var result = await command.ExecuteAsync(new StatusOptions { Port = null, ErrorsOnly = true, Quiet = true }, jsonOutput: true);
 
         // Assert
         result.ExitCode.Should().Be(0); // Success
@@ -195,10 +196,10 @@ public class StatusCommandTests : IDisposable
             InstanceStatus = new InstanceStatus { IsRunning = true, IsCompatible = true },
             StatusResponse = TestBuilders.CreateStatusResponse(_testOutputDir)
         };
-        var command = new StatusCommand(mockApiClient);
+        var command = new StatusCommand(mockApiClient, new MockPortResolver(), TestLoggerFactory.CreateLogger<StatusCommand>(), new ErrorFileScanner());
 
         // Act
-        var result = await command.ExecuteAsync(statsOnly: true, quiet: true, jsonOutput: true);
+        var result = await command.ExecuteAsync(new StatusOptions { Port = null, StatsOnly = true, Quiet = true }, jsonOutput: true);
 
         // Assert
         result.ExitCode.Should().Be(0); // Success
@@ -214,10 +215,10 @@ public class StatusCommandTests : IDisposable
             InstanceStatus = new InstanceStatus { IsRunning = true, IsCompatible = true },
             StatusResponse = TestBuilders.CreateStatusResponse(_testOutputDir)
         };
-        var command = new StatusCommand(mockApiClient);
+        var command = new StatusCommand(mockApiClient, new MockPortResolver(), TestLoggerFactory.CreateLogger<StatusCommand>(), new ErrorFileScanner());
 
         // Act
-        var result = await command.ExecuteAsync(verbose: true, quiet: true, jsonOutput: true);
+        var result = await command.ExecuteAsync(new StatusOptions { Port = null, Verbose = true, Quiet = true }, jsonOutput: true);
 
         // Assert
         result.ExitCode.Should().Be(0); // Success
@@ -236,10 +237,10 @@ public class StatusCommandTests : IDisposable
             InstanceStatus = new InstanceStatus { IsRunning = true, IsCompatible = true },
             StatusResponse = TestBuilders.CreateStatusResponse(_testOutputDir)
         };
-        var command = new StatusCommand(mockApiClient);
+        var command = new StatusCommand(mockApiClient, new MockPortResolver(), TestLoggerFactory.CreateLogger<StatusCommand>(), new ErrorFileScanner());
 
         // Act
-        var result = await command.ExecuteAsync(verbose: true, quiet: true, jsonOutput: true);
+        var result = await command.ExecuteAsync(new StatusOptions { Port = null, Verbose = true, Quiet = true }, jsonOutput: true);
 
         // Assert
         result.ExitCode.Should().Be(1); // User error
@@ -260,10 +261,10 @@ public class StatusCommandTests : IDisposable
             },
             StatusResponse = TestBuilders.CreateStatusResponse(_testOutputDir)
         };
-        var command = new StatusCommand(mockApiClient);
+        var command = new StatusCommand(mockApiClient, new MockPortResolver(), TestLoggerFactory.CreateLogger<StatusCommand>(), new ErrorFileScanner());
 
         // Act
-        var result = await command.ExecuteAsync(quiet: true, jsonOutput: true);
+        var result = await command.ExecuteAsync(new StatusOptions { Port = null, Quiet = true }, jsonOutput: true);
 
         // Assert
         result.ExitCode.Should().Be(0); // Success (still returns status despite incompatibility)
@@ -280,10 +281,10 @@ public class StatusCommandTests : IDisposable
         // Arrange
         var nonExistentDir = Path.Combine(Path.GetTempPath(), "non-existent-" + Guid.NewGuid());
         var mockApiClient = new MockOpenTelWatcherApiClient();
-        var command = new StatusCommand(mockApiClient);
+        var command = new StatusCommand(mockApiClient, new MockPortResolver(), TestLoggerFactory.CreateLogger<StatusCommand>(), new ErrorFileScanner());
 
         // Act
-        var result = await command.ExecuteAsync(outputDir: nonExistentDir, quiet: true, jsonOutput: true);
+        var result = await command.ExecuteAsync(new StatusOptions { Port = null, OutputDir = nonExistentDir, Quiet = true }, jsonOutput: true);
 
         // Assert
         result.ExitCode.Should().Be(2); // System error
@@ -299,10 +300,10 @@ public class StatusCommandTests : IDisposable
         File.WriteAllText(Path.Combine(_testOutputDir, "logs.20250117_100000_000.ndjson"), "{}\n");
 
         var mockApiClient = new MockOpenTelWatcherApiClient();
-        var command = new StatusCommand(mockApiClient);
+        var command = new StatusCommand(mockApiClient, new MockPortResolver(), TestLoggerFactory.CreateLogger<StatusCommand>(), new ErrorFileScanner());
 
         // Act
-        var result = await command.ExecuteAsync(outputDir: _testOutputDir, quiet: true, jsonOutput: true);
+        var result = await command.ExecuteAsync(new StatusOptions { Port = null, OutputDir = _testOutputDir, Quiet = true }, jsonOutput: true);
 
         // Assert
         result.ExitCode.Should().Be(0); // Success
@@ -317,10 +318,10 @@ public class StatusCommandTests : IDisposable
         File.WriteAllText(Path.Combine(_testOutputDir, "logs.20250117_110000_000.errors.ndjson"), "{}\n");
 
         var mockApiClient = new MockOpenTelWatcherApiClient();
-        var command = new StatusCommand(mockApiClient);
+        var command = new StatusCommand(mockApiClient, new MockPortResolver(), TestLoggerFactory.CreateLogger<StatusCommand>(), new ErrorFileScanner());
 
         // Act
-        var result = await command.ExecuteAsync(outputDir: _testOutputDir, quiet: true, jsonOutput: true);
+        var result = await command.ExecuteAsync(new StatusOptions { Port = null, OutputDir = _testOutputDir, Quiet = true }, jsonOutput: true);
 
         // Assert
         result.ExitCode.Should().Be(1); // User error (errors detected)
@@ -332,10 +333,10 @@ public class StatusCommandTests : IDisposable
     {
         // Arrange - empty directory
         var mockApiClient = new MockOpenTelWatcherApiClient();
-        var command = new StatusCommand(mockApiClient);
+        var command = new StatusCommand(mockApiClient, new MockPortResolver(), TestLoggerFactory.CreateLogger<StatusCommand>(), new ErrorFileScanner());
 
         // Act
-        var result = await command.ExecuteAsync(outputDir: _testOutputDir, quiet: true, jsonOutput: true);
+        var result = await command.ExecuteAsync(new StatusOptions { Port = null, OutputDir = _testOutputDir, Quiet = true }, jsonOutput: true);
 
         // Assert
         result.ExitCode.Should().Be(0); // Success
@@ -356,10 +357,10 @@ public class StatusCommandTests : IDisposable
             InstanceStatus = new InstanceStatus { IsRunning = true, IsCompatible = true },
             StatusResponse = TestBuilders.CreateStatusResponse(_testOutputDir)
         };
-        var command = new StatusCommand(mockApiClient);
+        var command = new StatusCommand(mockApiClient, new MockPortResolver(), TestLoggerFactory.CreateLogger<StatusCommand>(), new ErrorFileScanner());
 
         // Act
-        var result = await command.ExecuteAsync(outputDir: _testOutputDir, quiet: true, jsonOutput: true);
+        var result = await command.ExecuteAsync(new StatusOptions { Port = null, OutputDir = _testOutputDir, Quiet = true }, jsonOutput: true);
 
         // Assert
         result.ExitCode.Should().Be(0); // Success
@@ -377,10 +378,10 @@ public class StatusCommandTests : IDisposable
             InstanceStatus = new InstanceStatus { IsRunning = true, IsCompatible = true },
             StatusResponse = TestBuilders.CreateStatusResponse(_testOutputDir)
         };
-        var command = new StatusCommand(mockApiClient);
+        var command = new StatusCommand(mockApiClient, new MockPortResolver(), TestLoggerFactory.CreateLogger<StatusCommand>(), new ErrorFileScanner());
 
         // Act
-        var result = await command.ExecuteAsync(quiet: true, jsonOutput: true);
+        var result = await command.ExecuteAsync(new StatusOptions { Port = null, Quiet = true }, jsonOutput: true);
 
         // Assert
         result.ExitCode.Should().Be(0); // Success

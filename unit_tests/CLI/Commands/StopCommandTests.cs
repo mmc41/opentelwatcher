@@ -22,10 +22,10 @@ public class StopCommandTests
         {
             InstanceStatus = new InstanceStatus { IsRunning = false }
         };
-        var command = new StopCommand(mockApiClient);
+        var command = new StopCommand(mockApiClient, new MockPortResolver(), TestLoggerFactory.CreateLogger<StopCommand>());
 
         // Act
-        var result = await command.ExecuteAsync();
+        var result = await command.ExecuteAsync(new CommandOptions { Port = null, Silent = false });
 
         // Assert
         result.ExitCode.Should().Be(1); // User error
@@ -54,10 +54,10 @@ public class StopCommandTests
             StopSuccess = true,
             WaitForStopResult = true
         };
-        var command = new StopCommand(mockApiClient);
+        var command = new StopCommand(mockApiClient, new MockPortResolver(), TestLoggerFactory.CreateLogger<StopCommand>());
 
         // Act
-        var result = await command.ExecuteAsync();
+        var result = await command.ExecuteAsync(new CommandOptions { Port = null, Silent = false });
 
         // Assert
         result.ExitCode.Should().Be(0); // Success
@@ -84,10 +84,10 @@ public class StopCommandTests
             },
             StopSuccess = false // Stop request fails
         };
-        var command = new StopCommand(mockApiClient);
+        var command = new StopCommand(mockApiClient, new MockPortResolver(), TestLoggerFactory.CreateLogger<StopCommand>());
 
         // Act
-        var result = await command.ExecuteAsync();
+        var result = await command.ExecuteAsync(new CommandOptions { Port = null, Silent = false });
 
         // Assert
         result.ExitCode.Should().Be(2); // System error
@@ -115,10 +115,10 @@ public class StopCommandTests
             StopSuccess = true,
             WaitForStopResult = true
         };
-        var command = new StopCommand(mockApiClient);
+        var command = new StopCommand(mockApiClient, new MockPortResolver(), TestLoggerFactory.CreateLogger<StopCommand>());
 
         // Act
-        var result = await command.ExecuteAsync();
+        var result = await command.ExecuteAsync(new CommandOptions { Port = null, Silent = false });
 
         // Assert
         result.ExitCode.Should().Be(0); // Success
@@ -147,10 +147,10 @@ public class StopCommandTests
             StopSuccess = true,
             WaitForStopResult = true
         };
-        var command = new StopCommand(mockApiClient);
+        var command = new StopCommand(mockApiClient, new MockPortResolver(), TestLoggerFactory.CreateLogger<StopCommand>());
 
         // Act
-        var result = await command.ExecuteAsync();
+        var result = await command.ExecuteAsync(new CommandOptions { Port = null, Silent = false });
 
         // Assert - Should still succeed despite incompatibility warning
         result.ExitCode.Should().Be(0); // Success
@@ -179,10 +179,10 @@ public class StopCommandTests
             StopSuccess = true,
             WaitForStopResult = false // Timeout
         };
-        var command = new StopCommand(mockApiClient);
+        var command = new StopCommand(mockApiClient, new MockPortResolver(), TestLoggerFactory.CreateLogger<StopCommand>());
 
         // Act
-        var result = await command.ExecuteAsync();
+        var result = await command.ExecuteAsync(new CommandOptions { Port = null, Silent = false });
 
         // Assert
         result.ExitCode.Should().Be(2); // System error
@@ -210,10 +210,10 @@ public class StopCommandTests
             StopSuccess = true,
             WaitForStopResult = true
         };
-        var command = new StopCommand(mockApiClient);
+        var command = new StopCommand(mockApiClient, new MockPortResolver(), TestLoggerFactory.CreateLogger<StopCommand>());
 
         // Act
-        await command.ExecuteAsync();
+        await command.ExecuteAsync(new CommandOptions { Port = null, Silent = false });
 
         // Assert
         mockApiClient.GetInstanceStatusCalls.Should().HaveCount(1);
@@ -240,10 +240,10 @@ public class StopCommandTests
             StopSuccess = true,
             WaitForStopResult = true
         };
-        var command = new StopCommand(mockApiClient);
+        var command = new StopCommand(mockApiClient, new MockPortResolver(), TestLoggerFactory.CreateLogger<StopCommand>());
 
         // Act
-        var result = await command.ExecuteAsync();
+        var result = await command.ExecuteAsync(new CommandOptions { Port = null, Silent = false });
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -274,10 +274,10 @@ public class StopCommandTests
             StopSuccess = true,
             WaitForStopResult = true
         };
-        var command = new StopCommand(mockApiClient);
+        var command = new StopCommand(mockApiClient, new MockPortResolver(), TestLoggerFactory.CreateLogger<StopCommand>());
 
         // Act
-        var result = await command.ExecuteAsync(silent: true);
+        var result = await command.ExecuteAsync(new CommandOptions { Port = null, Silent = true });
 
         // Assert
         result.ExitCode.Should().Be(0);

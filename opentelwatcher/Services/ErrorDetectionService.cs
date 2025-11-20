@@ -12,6 +12,13 @@ namespace OpenTelWatcher.Services;
 public class ErrorDetectionService : IErrorDetectionService
 {
     /// <summary>
+    /// Minimum severity number that indicates an error or fatal condition.
+    /// Per OpenTelemetry specification:
+    /// - 17-20: ERROR severity levels
+    /// - 21-24: FATAL severity levels
+    /// </summary>
+    private const int ErrorSeverityThreshold = 17;
+    /// <summary>
     /// Determines whether the trace request contains any spans with errors.
     /// Checks for:
     /// - Span status code = STATUS_CODE_ERROR (value 2)
@@ -77,9 +84,9 @@ public class ErrorDetectionService : IErrorDetectionService
 
                 foreach (var logRecord in scopeLog.LogRecords)
                 {
-                    // Check severity number (17-20 = ERROR, 21-24 = FATAL)
+                    // Check severity number for ERROR or FATAL levels
                     // SeverityNumber is an enum, cast to int for comparison
-                    if ((int)logRecord.SeverityNumber >= 17)
+                    if ((int)logRecord.SeverityNumber >= ErrorSeverityThreshold)
                         return true;
 
                     // Check for exception attributes

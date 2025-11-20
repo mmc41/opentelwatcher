@@ -1,6 +1,7 @@
 using Google.Protobuf;
 using Microsoft.Extensions.Logging;
 using OpenTelemetry.Proto.Collector.Logs.V1;
+using OpenTelemetry.Proto.Collector.Metrics.V1;
 using OpenTelemetry.Proto.Collector.Trace.V1;
 using OpenTelWatcher.Configuration;
 using OpenTelWatcher.Models;
@@ -57,6 +58,9 @@ public sealed class TelemetryPipeline : ITelemetryPipeline
             throw new ArgumentException("Signal type must be specified", nameof(signal));
         }
 
+        // Validate message type matches signal type
+        ValidateMessageType(message, signal);
+
         // Serialize
         var json = _serializer.Serialize(message);
         var ndjsonLine = json + "\n";
@@ -106,5 +110,35 @@ public sealed class TelemetryPipeline : ITelemetryPipeline
                 => _errorDetection.ContainsErrors(logsRequest),
             _ => false // Metrics and other signals don't have error detection
         };
+    }
+
+    /// <summary>
+    /// Validates that the message type matches the expected type for the given signal type.
+    /// </summary>
+    /// <exception cref="ArgumentException">Thrown when message type doesn't match signal type</exception>
+    private static void ValidateMessageType<T>(T message, SignalType signal) where T : IMessage
+    {
+        var isValid = signal switch
+        {
+            SignalType.Traces => message is ExportTraceServiceRequest,
+            SignalType.Logs => message is ExportLogsServiceRequest,
+            SignalType.Metrics => message is ExportMetricsServiceRequest,
+            _ => false
+        };
+
+        if (!isValid)
+        {
+            var expectedType = signal switch
+            {
+                SignalType.Traces => nameof(ExportTraceServiceRequest),
+                SignalType.Logs => nameof(ExportLogsServiceRequest),
+                SignalType.Metrics => nameof(ExportMetricsServiceRequest),
+                _ => "unknown"
+            };
+
+            throw new ArgumentException(
+                $"Signal type {signal} requires {expectedType}, but received {message.GetType().Name}",
+                nameof(message));
+        }
     }
 }

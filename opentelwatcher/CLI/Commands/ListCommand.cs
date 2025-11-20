@@ -5,9 +5,16 @@ using OpenTelWatcher.Utilities;
 namespace OpenTelWatcher.CLI.Commands;
 
 /// <summary>
-/// List command - lists telemetry data files from output directory.
-/// Works in standalone mode (no running instance required).
+/// Executes file listing business logic for the 'opentelwatcher list' command in standalone mode.
+/// Scans output directory for *.ndjson telemetry files (traces, logs, metrics), filtering by pattern
+/// (--errors-only for *.errors.ndjson) and sorting by modification time. Displays file names, sizes,
+/// timestamps (--verbose), and counts. Operates without requiring running instance, making it useful
+/// for offline inspection. ListCommandBuilder creates CLI structure; this class handles filesystem scanning and formatting.
 /// </summary>
+/// <remarks>
+/// Scope: Directory scanning, file filtering/sorting, metadata extraction, formatted display (text/JSON).
+/// Builder: ListCommandBuilder provides options → This class: Scans filesystem and formats output
+/// </remarks>
 public sealed class ListCommand
 {
     public async Task<CommandResult> ExecuteAsync(string? outputDir = null, string defaultOutputDir = "./telemetry-data", bool errorsOnly = false, bool verbose = false, bool silent = false, bool jsonOutput = false)
@@ -24,7 +31,7 @@ public sealed class ListCommand
         // Step 2: Get file list
         try
         {
-            var files = await GetFileListAsync(outputDir, errorsOnly);
+            var files = GetFileList(outputDir, errorsOnly);
             return BuildSuccessResult(result, outputDir, files, errorsOnly, verbose, silent, jsonOutput);
         }
         catch (Exception ex)
@@ -33,7 +40,7 @@ public sealed class ListCommand
         }
     }
 
-    private async Task<List<FileInfo>> GetFileListAsync(string outputDir, bool errorsOnly)
+    private List<FileInfo> GetFileList(string outputDir, bool errorsOnly)
     {
         var directoryInfo = new DirectoryInfo(outputDir);
         var pattern = errorsOnly ? "*.errors.ndjson" : "*.ndjson";
@@ -42,7 +49,7 @@ public sealed class ListCommand
             .OrderBy(f => f.LastWriteTimeUtc)
             .ToList();
 
-        return await Task.FromResult(files);
+        return files;
     }
 
     private CommandResult BuildDirectoryNotFoundResult(Dictionary<string, object> result, string outputDir, bool silent, bool jsonOutput)
@@ -90,25 +97,17 @@ public sealed class ListCommand
 
     private void OutputResult(Dictionary<string, object> result, bool jsonOutput, bool silent, bool isError, string? errorType = null, List<FileInfo>? files = null, bool verbose = false, bool errorsOnly = false)
     {
-        if (jsonOutput)
+        CommandOutputFormatter.Output(result, jsonOutput, silent, _ =>
         {
-            Console.WriteLine(JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));
-            return;
-        }
-
-        if (silent)
-        {
-            return;
-        }
-
-        if (isError)
-        {
-            OutputErrorText(result, errorType!);
-        }
-        else
-        {
-            OutputSuccessText(result, files!, verbose, errorsOnly);
-        }
+            if (isError)
+            {
+                OutputErrorText(result, errorType!);
+            }
+            else
+            {
+                OutputSuccessText(result, files!, verbose, errorsOnly);
+            }
+        });
     }
 
     private void OutputErrorText(Dictionary<string, object> result, string errorType)
@@ -116,11 +115,11 @@ public sealed class ListCommand
         switch (errorType)
         {
             case "Directory not found":
-                Console.WriteLine($"Error: Directory not found: {result["outputDirectory"]}");
+                Console.WriteLine($"Error: Directory not found: {result["outputDirectory"]}.");
                 break;
 
             case "Failed to list files":
-                Console.WriteLine($"Error: Failed to list files from {result["outputDirectory"]}");
+                Console.WriteLine($"Error: Failed to list files from {result["outputDirectory"]}.");
                 Console.WriteLine($"Details: {result["details"]}");
                 break;
         }

@@ -3,75 +3,40 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using OpenTelWatcher.CLI.Models;
 using OpenTelWatcher.CLI.Services;
+using OpenTelWatcher.Services.Interfaces;
 using OpenTelWatcher.Utilities;
 
 namespace OpenTelWatcher.CLI.Commands;
 
 /// <summary>
-/// Unified Status command - provides health summary, detailed statistics, or error detection
-/// Supports dual-mode operation: API mode (instance running) and filesystem mode (standalone)
-///
-/// Modes:
-/// - Default: Full diagnostic information (version, health, config, files, stats)
-/// - --errors-only: Show only error-related information
-/// - --stats-only: Show only telemetry and file statistics
-/// - --verbose: Show detailed diagnostic information
-/// - --quiet: Suppress output, only exit code
-/// - --output-dir: Force filesystem mode (scan directory for errors)
-/// - --port: Specify port or auto-detect from PID file
-///
-/// Exit codes:
-/// - 0: Healthy (no errors detected)
-/// - 1: Unhealthy (errors detected)
-/// - 2: System error (failed to retrieve information)
+/// Executes status/health checking business logic for the 'opentelwatcher status' command in dual modes.
+/// API mode (default): Queries GET /api/status for health, version, config, file stats, telemetry counts, errors.
+/// Filesystem mode (--output-dir specified or no instance running): Scans directory for *.errors.ndjson files.
+/// Supports filtered displays (--errors-only, --stats-only, --verbose, --quiet). Returns exit code 0 (healthy),
+/// 1 (errors detected), or 2 (system error). StatusCommandBuilder creates CLI structure; this class handles
+/// mode selection, HTTP queries, filesystem scanning, and multi-format output.
 /// </summary>
+/// <remarks>
+/// Scope: Health checks, error detection, statistics aggregation, dual-mode coordination, exit code mapping.
+/// Builder: StatusCommandBuilder resolves port/fallback → This class: Queries API or scans filesystem
+/// </remarks>
 public sealed class StatusCommand
 {
     private readonly IOpenTelWatcherApiClient _apiClient;
-    private readonly IPortResolver? _portResolver;
-    private readonly ILogger<StatusCommand>? _logger;
-
-    /// <summary>
-    /// Legacy constructor for backward compatibility.
-    /// </summary>
-    public StatusCommand(IOpenTelWatcherApiClient apiClient)
-    {
-        _apiClient = apiClient;
-        _portResolver = null;
-        _logger = null;
-    }
+    private readonly IPortResolver _portResolver;
+    private readonly ILogger<StatusCommand> _logger;
+    private readonly IErrorFileScanner _errorFileScanner;
 
     public StatusCommand(
         IOpenTelWatcherApiClient apiClient,
         IPortResolver portResolver,
-        ILogger<StatusCommand> logger)
+        ILogger<StatusCommand> logger,
+        IErrorFileScanner errorFileScanner)
     {
         _apiClient = apiClient ?? throw new ArgumentNullException(nameof(apiClient));
         _portResolver = portResolver ?? throw new ArgumentNullException(nameof(portResolver));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-    }
-
-    /// <summary>
-    /// Legacy method signature for backward compatibility.
-    /// </summary>
-    public async Task<CommandResult> ExecuteAsync(
-        bool errorsOnly = false,
-        bool statsOnly = false,
-        bool verbose = false,
-        bool quiet = false,
-        bool jsonOutput = false,
-        string? outputDir = null)
-    {
-        var options = new StatusOptions
-        {
-            Port = null,
-            ErrorsOnly = errorsOnly,
-            StatsOnly = statsOnly,
-            Verbose = verbose,
-            Quiet = quiet,
-            OutputDir = outputDir
-        };
-        return await ExecuteAsync(options, jsonOutput);
+        _errorFileScanner = errorFileScanner ?? throw new ArgumentNullException(nameof(errorFileScanner));
     }
 
     public async Task<CommandResult> ExecuteAsync(StatusOptions options, bool jsonOutput = false)
@@ -151,7 +116,7 @@ public sealed class StatusCommand
             }
             else if (!quiet)
             {
-                Console.WriteLine($"Error: {message}");
+                Console.WriteLine($"Error: {message}.");
                 Console.WriteLine();
                 Console.WriteLine("Hint: Ensure the output directory exists before running status check.");
             }
@@ -208,7 +173,7 @@ public sealed class StatusCommand
     /// </summary>
     private CommandResult BuildFullInfoResult(Dictionary<string, object> result, InstanceStatus status, StatusResponse info, bool quiet, bool jsonOutput)
     {
-        var errorFileCount = CountErrorFiles(info.Configuration.OutputDirectory);
+        var errorFileCount = _errorFileScanner.CountErrorFiles(info.Configuration.OutputDirectory);
         var healthy = errorFileCount == 0;
 
         result["success"] = true;
@@ -243,7 +208,7 @@ public sealed class StatusCommand
     /// </summary>
     private CommandResult BuildErrorsOnlyResult(Dictionary<string, object> result, InstanceStatus status, StatusResponse info, bool verbose, bool quiet, bool jsonOutput)
     {
-        var errorFileCount = CountErrorFiles(info.Configuration.OutputDirectory);
+        var errorFileCount = _errorFileScanner.CountErrorFiles(info.Configuration.OutputDirectory);
         var healthy = errorFileCount == 0;
 
         result["success"] = true;
@@ -258,7 +223,7 @@ public sealed class StatusCommand
         if (verbose)
         {
             // Include error file list
-            var errorFiles = GetErrorFiles(info.Configuration.OutputDirectory);
+            var errorFiles = _errorFileScanner.GetErrorFiles(info.Configuration.OutputDirectory);
             result["errorFiles"] = errorFiles;
         }
 
@@ -316,7 +281,7 @@ public sealed class StatusCommand
     /// </summary>
     private CommandResult BuildVerboseResult(Dictionary<string, object> result, InstanceStatus status, StatusResponse info, bool quiet, bool jsonOutput)
     {
-        var errorFileCount = CountErrorFiles(info.Configuration.OutputDirectory);
+        var errorFileCount = _errorFileScanner.CountErrorFiles(info.Configuration.OutputDirectory);
         var healthy = errorFileCount == 0;
 
         result["success"] = true;
@@ -333,7 +298,7 @@ public sealed class StatusCommand
         result["uptimeSeconds"] = info.UptimeSeconds;
         result["outputDirectory"] = info.Configuration.OutputDirectory;
         result["errorFileCount"] = errorFileCount;
-        result["errorFiles"] = GetErrorFiles(info.Configuration.OutputDirectory);
+        result["errorFiles"] = _errorFileScanner.GetErrorFiles(info.Configuration.OutputDirectory);
         result["healthStatus"] = info.Health.Status;
         result["consecutiveErrors"] = info.Health.ConsecutiveErrors;
         result["recentErrors"] = info.Health.RecentErrors;
@@ -375,45 +340,6 @@ public sealed class StatusCommand
             : CommandResult.UserError("Unhealthy");
     }
 
-    private int CountErrorFiles(string outputDirectory)
-    {
-        try
-        {
-            if (!Directory.Exists(outputDirectory))
-            {
-                return 0;
-            }
-
-            return Directory.GetFiles(outputDirectory, "*.errors.ndjson", SearchOption.TopDirectoryOnly).Length;
-        }
-        catch
-        {
-            return 0;
-        }
-    }
-
-    private List<string> GetErrorFiles(string outputDirectory)
-    {
-        try
-        {
-            if (!Directory.Exists(outputDirectory))
-            {
-                return new List<string>();
-            }
-
-            return Directory.GetFiles(outputDirectory, "*.errors.ndjson", SearchOption.TopDirectoryOnly)
-                .Select(Path.GetFileName)
-                .Where(name => name != null)
-                .Cast<string>()
-                .OrderBy(name => name)
-                .ToList();
-        }
-        catch
-        {
-            return new List<string>();
-        }
-    }
-
     private void OutputFilesystemResult(Dictionary<string, object> result, bool jsonOutput, bool quiet, bool hasErrors)
     {
         if (jsonOutput)
@@ -432,11 +358,11 @@ public sealed class StatusCommand
 
         if (!hasErrors)
         {
-            Console.WriteLine($"✓ No error files found in {outputDir}");
+            Console.WriteLine($"✓ No error files found in {outputDir}.");
         }
         else
         {
-            Console.WriteLine($"✗ {errorFileCount} error file{(errorFileCount != 1 ? "s" : "")} detected in {outputDir}");
+            Console.WriteLine($"✗ {errorFileCount} error file{(errorFileCount != 1 ? "s" : "")} detected in {outputDir}.");
             var errorFiles = (List<string>)result["errorFiles"];
             foreach (var file in errorFiles)
             {
@@ -456,39 +382,31 @@ public sealed class StatusCommand
         StatusResponse? info = null,
         bool verbose = false)
     {
-        if (jsonOutput)
+        CommandOutputFormatter.Output(result, jsonOutput, quiet, _ =>
         {
-            Console.WriteLine(JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));
-            return;
-        }
-
-        if (quiet)
-        {
-            return;
-        }
-
-        if (isError)
-        {
-            OutputErrorText(result, errorType!);
-        }
-        else
-        {
-            switch (outputMode)
+            if (isError)
             {
-                case "full":
-                    OutputFullInfoText(result, status!, info!);
-                    break;
-                case "errors":
-                    OutputErrorsOnlyText(result, verbose);
-                    break;
-                case "stats":
-                    OutputStatsOnlyText(result);
-                    break;
-                case "verbose":
-                    OutputVerboseText(result, status!, info!);
-                    break;
+                OutputErrorText(result, errorType!);
             }
-        }
+            else
+            {
+                switch (outputMode)
+                {
+                    case "full":
+                        OutputFullInfoText(result, status!, info!);
+                        break;
+                    case "errors":
+                        OutputErrorsOnlyText(result, verbose);
+                        break;
+                    case "stats":
+                        OutputStatsOnlyText(result);
+                        break;
+                    case "verbose":
+                        OutputVerboseText(result, status!, info!);
+                        break;
+                }
+            }
+        });
     }
 
     private void OutputErrorText(Dictionary<string, object> result, string errorType)
@@ -505,7 +423,7 @@ public sealed class StatusCommand
                 break;
 
             case "Failed to retrieve info":
-                Console.WriteLine($"Error: {result["error"]}");
+                Console.WriteLine($"Error: {result["error"]}.");
                 break;
         }
     }
@@ -514,7 +432,7 @@ public sealed class StatusCommand
     {
         if (!status.IsCompatible)
         {
-            Console.WriteLine("Warning: Incompatible version detected");
+            Console.WriteLine("Warning: Incompatible version detected.");
             Console.WriteLine($"  {result["incompatibilityReason"]}");
             Console.WriteLine();
             Console.WriteLine("Information may be unreliable.");
@@ -550,7 +468,7 @@ public sealed class StatusCommand
         var healthIcon = healthy ? "✓" : "✗";
         var healthText = healthy ? "Healthy" : "Unhealthy";
 
-        Console.WriteLine($"{healthIcon} {healthText}");
+        Console.WriteLine($"{healthIcon} {healthText}.");
         Console.WriteLine();
         Console.WriteLine("Error Summary:");
         Console.WriteLine($"  Error files:         {errorFileCount}");
@@ -599,23 +517,23 @@ public sealed class StatusCommand
         var metricsSize = (long)metricsFiles["sizeBytes"];
 
         Console.WriteLine("Telemetry Statistics:");
-        Console.WriteLine($"  Traces received:  {tracesReq,6} request{(tracesReq != 1 ? "s" : " ")}");
-        Console.WriteLine($"  Logs received:    {logsReq,6} request{(logsReq != 1 ? "s" : " ")}");
-        Console.WriteLine($"  Metrics received: {metricsReq,6} request{(metricsReq != 1 ? "s" : " ")}");
+        Console.WriteLine($"  Traces received:  {tracesReq,6} request{(tracesReq != 1 ? "s" : " ")}.");
+        Console.WriteLine($"  Logs received:    {logsReq,6} request{(logsReq != 1 ? "s" : " ")}.");
+        Console.WriteLine($"  Metrics received: {metricsReq,6} request{(metricsReq != 1 ? "s" : " ")}.");
         Console.WriteLine();
-        Console.WriteLine($"Files: {fileCount} ({NumberFormatter.FormatBytes(totalSize)})");
-        Console.WriteLine($"  traces:  {tracesCount,3} file{(tracesCount != 1 ? "s" : " ")} ({NumberFormatter.FormatBytes(tracesSize)})");
-        Console.WriteLine($"  logs:    {logsCount,3} file{(logsCount != 1 ? "s" : " ")} ({NumberFormatter.FormatBytes(logsSize)})");
-        Console.WriteLine($"  metrics: {metricsCount,3} file{(metricsCount != 1 ? "s" : " ")} ({NumberFormatter.FormatBytes(metricsSize)})");
+        Console.WriteLine($"Files: {fileCount} ({NumberFormatter.FormatBytes(totalSize)}).");
+        Console.WriteLine($"  traces:  {tracesCount,3} file{(tracesCount != 1 ? "s" : " ")} ({NumberFormatter.FormatBytes(tracesSize)}).");
+        Console.WriteLine($"  logs:    {logsCount,3} file{(logsCount != 1 ? "s" : " ")} ({NumberFormatter.FormatBytes(logsSize)}).");
+        Console.WriteLine($"  metrics: {metricsCount,3} file{(metricsCount != 1 ? "s" : " ")} ({NumberFormatter.FormatBytes(metricsSize)}).");
         Console.WriteLine();
-        Console.WriteLine($"Uptime: {UptimeFormatter.FormatUptime(TimeSpan.FromSeconds(uptimeSeconds))}");
+        Console.WriteLine($"Uptime: {UptimeFormatter.FormatUptime(TimeSpan.FromSeconds(uptimeSeconds))}.");
     }
 
     private void OutputVerboseText(Dictionary<string, object> result, InstanceStatus status, StatusResponse info)
     {
         if (!status.IsCompatible)
         {
-            Console.WriteLine("Warning: Incompatible version detected");
+            Console.WriteLine("Warning: Incompatible version detected.");
             Console.WriteLine($"  {result["incompatibilityReason"]}");
             Console.WriteLine();
         }

@@ -34,9 +34,9 @@ namespace OpenTelWatcher.Services;
 /// - Hard kill (SIGKILL/Task Manager force) may bypass cleanup leaving stale entries
 /// - Network shares may have unreliable file locking
 /// - Container restarts lose temp directory PID file
-/// - Disk full causes silent failures (logged as warnings)
 ///
-/// Error Handling: All methods catch exceptions and log warnings. PID file failures never crash the app.
+/// Error Handling: All methods catch exceptions and never throw. Fatal errors (permissions, disk full) are
+/// logged at Error level, while recoverable errors (temporary locks) are logged at Warning level.
 /// </remarks>
 public sealed class PidFileService : IPidFileService
 {
@@ -70,34 +70,9 @@ public sealed class PidFileService : IPidFileService
         _currentPid = _environment.CurrentProcessId;
 
         // Determine platform-appropriate PID file directory
-        string pidDirectory = GetPidFileDirectory();
+        string pidDirectory = _environment.GetRuntimeDirectory();
 
         PidFilePath = Path.Combine(pidDirectory, "opentelwatcher.pid");
-    }
-
-    /// <summary>
-    /// Gets the appropriate directory for the PID file based on platform and deployment scenario.
-    /// </summary>
-    private string GetPidFileDirectory()
-    {
-        // For development/testing: Use executable directory if running from artifacts
-        var executableDir = _environment.BaseDirectory;
-        if (executableDir.Contains("artifacts"))
-        {
-            return executableDir;
-        }
-
-        // For production deployments: Use platform-appropriate temp directory
-        // Linux/macOS: XDG_RUNTIME_DIR provides per-user runtime directory
-        // Windows: Path.GetTempPath() provides user temp directory
-        var xdgRuntimeDir = _environment.GetEnvironmentVariable("XDG_RUNTIME_DIR");
-        if (!string.IsNullOrEmpty(xdgRuntimeDir) && Directory.Exists(xdgRuntimeDir))
-        {
-            return xdgRuntimeDir;
-        }
-
-        // Fallback to OS temp directory
-        return _environment.TempPath;
     }
 
     /// <summary>
@@ -135,8 +110,19 @@ public sealed class PidFileService : IPidFileService
             }
             catch (Exception ex)
             {
-                // Log but don't throw - PID registration is optional functionality
-                _logger.LogWarning(ex, "Failed to register PID in {PidFilePath}", PidFilePath);
+                // Distinguish between fatal errors (permissions, disk full) and recoverable errors (temporary locks)
+                // PID registration is optional functionality, so we never throw, but fatal errors are logged at Error level
+                if (IsFatalException(ex))
+                {
+                    _logger.LogError(ex,
+                        "Fatal error registering PID in {PidFilePath}. This may prevent daemon mode and multi-instance coordination. " +
+                        "Check file permissions and disk space.",
+                        PidFilePath);
+                }
+                else
+                {
+                    _logger.LogWarning(ex, "Failed to register PID in {PidFilePath}", PidFilePath);
+                }
             }
             finally
             {
@@ -196,8 +182,19 @@ public sealed class PidFileService : IPidFileService
             }
             catch (Exception ex)
             {
-                // Log but don't throw - PID unregistration is optional functionality
-                _logger.LogWarning(ex, "Failed to unregister PID from {PidFilePath}", PidFilePath);
+                // Distinguish between fatal errors (permissions, disk full) and recoverable errors (temporary locks)
+                // PID unregistration is optional functionality, so we never throw, but fatal errors are logged at Error level
+                if (IsFatalException(ex))
+                {
+                    _logger.LogError(ex,
+                        "Fatal error unregistering PID from {PidFilePath}. This may leave stale entries. " +
+                        "Check file permissions and disk space.",
+                        PidFilePath);
+                }
+                else
+                {
+                    _logger.LogWarning(ex, "Failed to unregister PID from {PidFilePath}", PidFilePath);
+                }
                 // Mark as unregistered even on failure to avoid repeated failed attempts
                 _isUnregistered = true;
             }
@@ -234,7 +231,18 @@ public sealed class PidFileService : IPidFileService
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to read PIDs from {PidFilePath}", PidFilePath);
+                // Distinguish between fatal errors (permissions) and recoverable errors (temporary locks)
+                if (IsFatalException(ex))
+                {
+                    _logger.LogError(ex,
+                        "Fatal error reading PIDs from {PidFilePath}. Port auto-detection may not work. " +
+                        "Check file permissions.",
+                        PidFilePath);
+                }
+                else
+                {
+                    _logger.LogWarning(ex, "Failed to read PIDs from {PidFilePath}", PidFilePath);
+                }
                 return Array.Empty<PidEntry>();
             }
             finally
@@ -316,7 +324,18 @@ public sealed class PidFileService : IPidFileService
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to clean stale entries from {PidFilePath}", PidFilePath);
+                // Distinguish between fatal errors (permissions, disk full) and recoverable errors (temporary locks)
+                if (IsFatalException(ex))
+                {
+                    _logger.LogError(ex,
+                        "Fatal error cleaning stale entries from {PidFilePath}. Stale entries may accumulate. " +
+                        "Check file permissions and disk space.",
+                        PidFilePath);
+                }
+                else
+                {
+                    _logger.LogWarning(ex, "Failed to clean stale entries from {PidFilePath}", PidFilePath);
+                }
                 return 0;
             }
             finally
@@ -406,5 +425,48 @@ public sealed class PidFileService : IPidFileService
             writer.WriteLine(json);
         }
         writer.Flush();
+    }
+
+    /// <summary>
+    /// Determines if an exception represents a fatal error that should be logged at Error level
+    /// vs a recoverable error that should be logged at Warning level.
+    /// </summary>
+    /// <remarks>
+    /// Fatal errors include:
+    /// - UnauthorizedAccessException: Permission denied on PID file or directory
+    /// - DirectoryNotFoundException: PID directory doesn't exist
+    /// - IOException with disk full, path too long, or network path errors
+    ///
+    /// Recoverable errors include:
+    /// - IOException for file locking (handled by retry logic)
+    /// - Other transient I/O errors
+    /// </remarks>
+    private static bool IsFatalException(Exception ex)
+    {
+        return ex switch
+        {
+            UnauthorizedAccessException => true,
+            DirectoryNotFoundException => true,
+            IOException ioEx => IsFatalIOException(ioEx),
+            _ => false
+        };
+    }
+
+    /// <summary>
+    /// Determines if an IOException represents a fatal error.
+    /// </summary>
+    private static bool IsFatalIOException(IOException ioEx)
+    {
+        // Check for specific fatal error codes (Windows HRESULTs)
+        const int ERROR_DISK_FULL = unchecked((int)0x80070070);
+        const int ERROR_HANDLE_DISK_FULL = unchecked((int)0x80070027);
+        const int ERROR_FILENAME_EXCED_RANGE = unchecked((int)0x800700CE);
+        const int ERROR_BAD_NETPATH = unchecked((int)0x80070035);
+
+        int hResult = ioEx.HResult;
+        return hResult == ERROR_DISK_FULL
+            || hResult == ERROR_HANDLE_DISK_FULL
+            || hResult == ERROR_FILENAME_EXCED_RANGE
+            || hResult == ERROR_BAD_NETPATH;
     }
 }

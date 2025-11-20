@@ -4,27 +4,26 @@ using Microsoft.Extensions.Logging;
 using OpenTelWatcher.Configuration;
 using OpenTelWatcher.CLI.Models;
 using OpenTelWatcher.CLI.Services;
+using OpenTelWatcher.Utilities;
 
 namespace OpenTelWatcher.CLI.Commands;
 
 /// <summary>
-/// Stop command - stops running watcher instance
+/// Executes shutdown business logic for the 'opentelwatcher stop' command.
+/// Attempts graceful shutdown via POST /api/stop, falling back to forceful process termination if API
+/// unavailable. Validates process identity (name check) to avoid killing unrelated PIDs after PID recycling.
+/// Queries running instance for version/config info display before shutdown. Handles timeout scenarios
+/// and PID file cleanup. StopCommandBuilder creates CLI structure; this class handles HTTP communication and process control.
 /// </summary>
+/// <remarks>
+/// Scope: HTTP shutdown request, process validation/termination, PID file management, timeout handling.
+/// Builder: StopCommandBuilder resolves port → This class: Executes shutdown via API or process kill
+/// </remarks>
 public sealed class StopCommand
 {
     private readonly IOpenTelWatcherApiClient _apiClient;
-    private readonly IPortResolver? _portResolver;
-    private readonly ILogger<StopCommand>? _logger;
-
-    /// <summary>
-    /// Legacy constructor for backward compatibility with existing tests.
-    /// </summary>
-    public StopCommand(IOpenTelWatcherApiClient apiClient)
-    {
-        _apiClient = apiClient ?? throw new ArgumentNullException(nameof(apiClient));
-        _portResolver = null;
-        _logger = null;
-    }
+    private readonly IPortResolver _portResolver;
+    private readonly ILogger<StopCommand> _logger;
 
     public StopCommand(
         IOpenTelWatcherApiClient apiClient,
@@ -34,15 +33,6 @@ public sealed class StopCommand
         _apiClient = apiClient ?? throw new ArgumentNullException(nameof(apiClient));
         _portResolver = portResolver ?? throw new ArgumentNullException(nameof(portResolver));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-    }
-
-    /// <summary>
-    /// Legacy method for backward compatibility with existing tests.
-    /// </summary>
-    public async Task<CommandResult> ExecuteAsync(bool silent = false, bool jsonOutput = false)
-    {
-        // Default behavior - no port resolution (will fail if called without proper setup)
-        return await ExecuteAsync(new CommandOptions { Port = null, Silent = silent }, jsonOutput);
     }
 
     public async Task<CommandResult> ExecuteAsync(CommandOptions options, bool jsonOutput = false)
@@ -173,7 +163,7 @@ public sealed class StopCommand
         {
             Console.WriteLine();
             Console.WriteLine();
-            Console.WriteLine($"Warning: Service did not stop gracefully within {ApiConstants.Timeouts.ShutdownWaitSeconds} seconds");
+            Console.WriteLine($"Warning: Service did not stop gracefully within {ApiConstants.Timeouts.ShutdownWaitSeconds} seconds.");
         }
 
         if (!status.Pid.HasValue)
@@ -183,7 +173,7 @@ public sealed class StopCommand
 
         if (!silent && !jsonOutput)
         {
-            Console.WriteLine($"Attempting to forcefully terminate process (PID: {status.Pid.Value})...");
+            Console.WriteLine($"Attempting to forcefully terminate process (PID: {status.Pid.Value}).");
         }
 
         try
@@ -219,7 +209,7 @@ public sealed class StopCommand
     {
         if (!silent && !jsonOutput)
         {
-            Console.WriteLine($"WARNING: Forcefully terminating process '{process.ProcessName}' (PID: {pid})");
+            Console.WriteLine($"Warning: Forcefully terminating process '{process.ProcessName}' (PID: {pid}).");
             Console.WriteLine("This will terminate the entire process tree.");
         }
 
@@ -290,21 +280,17 @@ public sealed class StopCommand
 
     private void OutputResult(Dictionary<string, object> result, bool jsonOutput, bool silent, bool isError, string? errorType = null, string? messageType = null)
     {
-        if (jsonOutput)
+        CommandOutputFormatter.Output(result, jsonOutput, silent, _ =>
         {
-            Console.WriteLine(JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));
-            return;
-        }
-
-        // Text output based on error type or success
-        if (isError)
-        {
-            OutputErrorText(result, errorType!);
-        }
-        else
-        {
-            OutputSuccessText(result, silent, messageType);
-        }
+            if (isError)
+            {
+                OutputErrorText(result, errorType!);
+            }
+            else
+            {
+                OutputSuccessText(result, silent, messageType);
+            }
+        });
     }
 
     private void OutputErrorText(Dictionary<string, object> result, string errorType)
@@ -317,12 +303,12 @@ public sealed class StopCommand
 
             case "Failed to send shutdown request":
                 Console.WriteLine();
-                Console.WriteLine($"Error: {errorType}");
+                Console.WriteLine($"Error: {errorType}.");
                 Console.WriteLine((string)result["message"]);
                 break;
 
             case "Process validation failed":
-                Console.WriteLine($"Error: Process validation failed. Expected 'opentelwatcher' or 'dotnet', found '{result["found"]}'");
+                Console.WriteLine($"Error: Process validation failed. Expected 'opentelwatcher' or 'dotnet', found '{result["found"]}'.");
                 Console.WriteLine("The process may have already stopped and the PID was recycled.");
                 Console.WriteLine("Refusing to terminate potentially unrelated process.");
                 break;
@@ -332,7 +318,7 @@ public sealed class StopCommand
                 break;
 
             case "Process kill failed":
-                Console.WriteLine($"Error: Failed to kill process: {result["details"]}");
+                Console.WriteLine($"Error: Failed to kill process: {result["details"]}.");
                 break;
 
             case "Shutdown timeout":

@@ -669,3 +669,173 @@ dotnet run --project opentelwatcher -- start --tails-filter-errors-only
 - Registered conditionally in telemetry pipeline when `--tails` flag is present
 - Uses `AllSignalsFilter` or `ErrorsOnlyFilter` based on `--tails-filter-errors-only`
 - Timestamps use InvariantCulture for consistent formatting across platforms
+
+## Logging Standards
+
+Follow these standards for consistent logging across the codebase to ensure appropriate log levels
+and structured logging patterns.
+
+### Log Level Guidelines
+
+**Error Level:**
+- Application errors that prevent core functionality
+- Fatal exceptions (permissions denied, disk full, network failures)
+- Include actionable guidance in message when possible
+- Example: `LogError(ex, "Fatal error registering PID in {PidFilePath}. Check file permissions and disk space.", PidFilePath)`
+
+**Warning Level:**
+- Degraded functionality or non-optimal configuration
+- Recoverable errors that may impact user experience
+- Resource constraints or missing optional features
+- Configuration issues that should be addressed
+- Example: `LogWarning(ex, "Failed to register PID in {PidFilePath}", PidFilePath)`
+
+**Information Level:**
+- Normal operational events (startup, shutdown, configuration)
+- State changes in application lifecycle
+- Successful completion of significant operations
+- User-initiated actions
+- Expected states (e.g., "No running instances found" is normal, not a warning)
+- Example: `LogInformation("Registered process {ProcessId} on port {Port}", processId, port)`
+
+**Debug Level:**
+- Detailed diagnostic information for troubleshooting
+- Expected failures during retry loops or startup sequences
+- Performance metrics and timing information
+- Verbose operational details
+- Example: `LogDebug("Health check failed during startup, will retry")`
+
+### Structured Logging Best Practices
+
+**Use structured parameters (not string interpolation):**
+```csharp
+// Good - structured logging with parameters
+_logger.LogInformation("Starting server on port {Port} with output directory {OutputDirectory}",
+    port, outputDirectory);
+
+// Bad - string interpolation loses structure
+_logger.LogInformation($"Starting server on port {port} with output directory {outputDirectory}");
+```
+
+**Use consistent parameter naming:**
+- Port numbers: `{Port}`
+- Process IDs: `{ProcessId}` or `{Pid}`
+- File paths: `{FilePath}`, `{PidFilePath}`, `{OutputDirectory}`
+- Error types: `{ErrorType}`, `{ExceptionType}`
+- Counts: `{Count}`, `{RemovedCount}`, `{FileCount}`
+
+**Always include exception object when logging errors:**
+```csharp
+// Good - includes exception for full stack trace
+_logger.LogError(ex, "Failed to read PIDs from {PidFilePath}", PidFilePath);
+
+// Bad - only message string, loses stack trace
+_logger.LogError("Failed to read PIDs from {0}: {1}", PidFilePath, ex.Message);
+```
+
+**Provide context about what operation failed:**
+```csharp
+// Good - explains operation and impact
+_logger.LogError(ex, "Fatal error reading PIDs from {PidFilePath}. Port auto-detection may not work.",
+    PidFilePath);
+
+// Acceptable - basic context
+_logger.LogError(ex, "Failed to read PIDs from {PidFilePath}", PidFilePath);
+```
+
+**Distinguish between expected and unexpected exceptions:**
+- Expected exceptions during retries or startup: Use `LogDebug` or `LogWarning`
+- Unexpected exceptions that indicate bugs: Use `LogError`
+- Fatal exceptions that prevent core functionality: Use `LogError` with guidance
+
+## Error Message Standards
+
+Follow these standards for consistent error messaging in console output and user-facing messages.
+These standards apply to console output, not internal log messages.
+
+### Message Formatting Rules
+
+**Simple errors (single sentence):**
+- Use sentence case (capitalize first word only)
+- End with period
+- Example: `"Instance already running."`
+- Example: `"No instance running."`
+
+**Errors with context (provide details):**
+- Use "Error: " prefix for clarity
+- Follow with descriptive message
+- End with period
+- Example: `"Error: Cannot create output directory."`
+- Example: `"Error: Failed to retrieve application information."`
+
+**Multi-line errors (complex scenarios with guidance):**
+- First line: Main error message ending with period
+- Blank line separator
+- Optional: Detail lines explaining the problem
+- Blank line separator
+- Suggestion line: "Suggestion: " or actionable guidance
+- Example:
+  ```
+  Error: Cannot use --tails with --daemon. Tails mode requires foreground operation.
+
+  The --tails flag outputs live telemetry to stdout, which requires the process
+  to remain in the foreground to maintain the console connection.
+
+  Suggestion: Remove the --daemon flag to use tails mode.
+  ```
+
+**Errors with multiple options (provide alternatives):**
+- Main error message
+- Blank line
+- Numbered or bulleted list of options
+- Example:
+  ```
+  Multiple instances running on ports: 4318, 5000, 6000.
+
+  Please specify which instance to target using:
+    opentelwatcher stop --port <PORT>
+  ```
+
+**JSON error output:**
+- Use camelCase for property names
+- No periods in error message values (JSON convention)
+- Include relevant context properties
+- Example: `{"success": false, "error": "Instance already running", "port": 4318}`
+
+### Console Output vs Exceptions
+
+**Console output** (user-facing):
+- May include formatting (colors, indentation, blank lines)
+- Can include helpful suggestions and examples
+- Should guide users toward resolution
+- Example: Multi-line output with "Suggestion: " prefix
+
+**Exception messages** (programmatic):
+- Plain text without formatting
+- Concise description of what went wrong
+- No suggestions or examples (those go in documentation)
+- Example: `"Port must be between 1 and 65535"`
+
+### Common Error Patterns
+
+**Configuration errors:**
+- Format: "Error: <what's wrong>. <why it matters>"
+- Example: "Error: Output directory cannot be empty. Telemetry data must be stored somewhere."
+
+**State errors (wrong application state):**
+- Format: "<State description>. <what user should do>"
+- Example: "Instance already running on port 4318. Use 'opentelwatcher stop' to stop it first."
+
+**File/Directory errors:**
+- Format: "Error: <operation failed>: <path>"
+- Include path for debugging
+- Example: "Error: Directory not found: /path/to/telemetry"
+
+**Validation errors:**
+- Format: "<Field> <constraint>"
+- Concise and clear
+- Example: "Port must be between 1 and 65535."
+
+**Network/API errors:**
+- Format: "Error: <operation>. <details>"
+- Example: "Error: Failed to send shutdown request. Connection refused."
