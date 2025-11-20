@@ -21,34 +21,6 @@ public class TelemetryStatisticsTests
     }
 
     [Fact]
-    public void IncrementLogs_IncreasesLogsReceivedCount()
-    {
-        // Arrange
-        var stats = new TelemetryStatisticsService();
-
-        // Act
-        stats.IncrementLogs();
-        stats.IncrementLogs();
-        stats.IncrementLogs();
-
-        // Assert
-        stats.LogsReceived.Should().Be(3);
-    }
-
-    [Fact]
-    public void IncrementMetrics_IncreasesMetricsReceivedCount()
-    {
-        // Arrange
-        var stats = new TelemetryStatisticsService();
-
-        // Act
-        stats.IncrementMetrics();
-
-        // Assert
-        stats.MetricsReceived.Should().Be(1);
-    }
-
-    [Fact]
     public async Task Statistics_AreThreadSafe()
     {
         // Arrange

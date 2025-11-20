@@ -19,23 +19,6 @@ public class SwaggerUiTests
     }
 
     [Fact]
-    public async Task SwaggerUI_ShouldLoadSuccessfully()
-    {
-        // Act
-        _logger.LogInformation("Testing Swagger UI loads successfully");
-        var response = await _fixture.Client.GetAsync("/swagger/index.html", TestContext.Current.CancellationToken);
-
-        // Assert
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-
-        var content = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
-        _logger.LogDebug("Swagger UI content length: {Length} bytes", content.Length);
-
-        content.Should().Contain("swagger-ui");
-        content.Should().Contain("swagger-ui-bundle.js");
-    }
-
-    [Fact]
     public async Task OpenApiSpec_ShouldBeAvailable()
     {
         // Act

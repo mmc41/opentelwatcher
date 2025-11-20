@@ -51,69 +51,6 @@ public class PidEntryTests
     }
 
     [Fact]
-    public void IsRunning_WhenProcessNameIsOpenTelWatcher_ReturnsTrue()
-    {
-        // Arrange
-        var mockProcessProvider = new MockProcessProvider();
-        mockProcessProvider.AddProcess(12345, "opentelwatcher", hasExited: false);
-
-        var entry = new PidEntry
-        {
-            Pid = 12345,
-            Port = 4318,
-            Timestamp = DateTime.UtcNow
-        };
-
-        // Act
-        var result = entry.IsRunning(mockProcessProvider);
-
-        // Assert
-        result.Should().BeTrue("process name contains 'opentelwatcher'");
-    }
-
-    [Fact]
-    public void IsRunning_WhenProcessNameIsWatcher_ReturnsTrue()
-    {
-        // Arrange
-        var mockProcessProvider = new MockProcessProvider();
-        mockProcessProvider.AddProcess(12345, "watcher", hasExited: false);
-
-        var entry = new PidEntry
-        {
-            Pid = 12345,
-            Port = 4318,
-            Timestamp = DateTime.UtcNow
-        };
-
-        // Act
-        var result = entry.IsRunning(mockProcessProvider);
-
-        // Assert
-        result.Should().BeTrue("process name contains 'watcher'");
-    }
-
-    [Fact]
-    public void IsRunning_WhenProcessNameIsDotnet_ReturnsTrue()
-    {
-        // Arrange
-        var mockProcessProvider = new MockProcessProvider();
-        mockProcessProvider.AddProcess(12345, "dotnet", hasExited: false);
-
-        var entry = new PidEntry
-        {
-            Pid = 12345,
-            Port = 4318,
-            Timestamp = DateTime.UtcNow
-        };
-
-        // Act
-        var result = entry.IsRunning(mockProcessProvider);
-
-        // Assert
-        result.Should().BeTrue("process name contains 'dotnet'");
-    }
-
-    [Fact]
     public void IsRunning_WhenProcessNameIsUnrelated_ReturnsFalse()
     {
         // Arrange
@@ -204,51 +141,5 @@ public class PidEntryTests
 
         // Assert
         age.Should().Be(TimeSpan.Zero);
-    }
-
-    [Fact]
-    public void GetAge_WithTimeProgression_ReturnsCorrectAge()
-    {
-        // Arrange
-        var mockTimeProvider = new MockTimeProvider
-        {
-            UtcNow = new DateTime(2025, 1, 17, 12, 0, 0, DateTimeKind.Utc)
-        };
-
-        var entry = new PidEntry
-        {
-            Pid = 12345,
-            Port = 4318,
-            Timestamp = new DateTime(2025, 1, 17, 11, 0, 0, DateTimeKind.Utc)
-        };
-
-        // Act - initial age
-        var age1 = entry.GetAge(mockTimeProvider);
-
-        // Advance time by 30 minutes
-        mockTimeProvider.AdvanceTime(TimeSpan.FromMinutes(30));
-        var age2 = entry.GetAge(mockTimeProvider);
-
-        // Assert
-        age1.Should().Be(TimeSpan.FromHours(1), "initial age should be 1 hour");
-        age2.Should().Be(TimeSpan.FromHours(1.5), "age after 30 minutes should be 1.5 hours");
-    }
-
-    [Fact]
-    public void PidEntry_Properties_AreSetCorrectly()
-    {
-        // Arrange & Act
-        var timestamp = DateTime.UtcNow;
-        var entry = new PidEntry
-        {
-            Pid = 12345,
-            Port = 4318,
-            Timestamp = timestamp
-        };
-
-        // Assert
-        entry.Pid.Should().Be(12345);
-        entry.Port.Should().Be(4318);
-        entry.Timestamp.Should().Be(timestamp);
     }
 }

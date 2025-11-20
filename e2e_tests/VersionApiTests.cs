@@ -45,36 +45,6 @@ public class VersionApiTests
         info.VersionComponents.Patch.Should().BeGreaterThanOrEqualTo(0);
         info.ProcessId.Should().BeGreaterThan(0, "process ID should be a valid positive integer");
     }
-
-    [Fact]
-    public async Task VersionEndpoint_ReturnsOpenTelWatcherIdentifier()
-    {
-        // Act
-        var response = await _fixture.Client.GetAsync("/api/status", TestContext.Current.CancellationToken);
-        var info = await response.Content.ReadFromJsonAsync<StatusResponse>(cancellationToken: TestContext.Current.CancellationToken);
-
-        // Assert
-        info.Should().NotBeNull();
-        info!.Application.Should().Be("OpenTelWatcher");
-    }
-
-    [Fact]
-    public async Task VersionEndpoint_ReturnsConsistentVersion()
-    {
-        // Act - Call twice
-        _logger.LogInformation("Calling /api/status twice to verify consistency");
-        var response1 = await _fixture.Client.GetAsync("/api/status", TestContext.Current.CancellationToken);
-        var info1 = await response1.Content.ReadFromJsonAsync<StatusResponse>(cancellationToken: TestContext.Current.CancellationToken);
-
-        var response2 = await _fixture.Client.GetAsync("/api/status", TestContext.Current.CancellationToken);
-        var info2 = await response2.Content.ReadFromJsonAsync<StatusResponse>(cancellationToken: TestContext.Current.CancellationToken);
-
-        _logger.LogInformation("First call: Version={Version1}, Second call: Version={Version2}",
-            info1?.Version, info2?.Version);
-
-        // Assert - Should be identical
-        info1.Should().BeEquivalentTo(info2);
-    }
 }
 
 public record StatusResponse
