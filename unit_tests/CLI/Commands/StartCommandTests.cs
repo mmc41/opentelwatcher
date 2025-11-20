@@ -231,7 +231,7 @@ public class StartCommandTests
     public async Task ExecuteAsync_CreatesOutputDirectory_WhenItDoesNotExist()
     {
         // Arrange
-        var testDir = Path.Combine(Path.GetTempPath(), $"start-command-test-{Guid.NewGuid()}");
+        using var testDir = new TempDirectory("start-command-test");
         var mockApiClient = new MockOpenTelWatcherApiClient
         {
             InstanceStatus = new InstanceStatus { IsRunning = false }
@@ -248,27 +248,16 @@ public class StartCommandTests
         var options = new CommandOptions
         {
             Port = 4318,
-            OutputDirectory = testDir,
+            OutputDirectory = testDir.Path,
             Daemon = false
         };
 
-        try
-        {
-            // Act
-            var result = await command.ExecuteAsync(options);
+        // Act
+        var result = await command.ExecuteAsync(options);
 
-            // Assert
-            result.ExitCode.Should().Be(0);
-            Directory.Exists(testDir).Should().BeTrue("output directory should be created");
-        }
-        finally
-        {
-            // Cleanup
-            if (Directory.Exists(testDir))
-            {
-                Directory.Delete(testDir, recursive: true);
-            }
-        }
+        // Assert
+        result.ExitCode.Should().Be(0);
+        Directory.Exists(testDir.Path).Should().BeTrue("output directory should be created");
     }
 
     [Fact]
@@ -443,5 +432,32 @@ public class StartCommandTests
         result.Message.Should().Be("Server stopped gracefully");
         // Verbose mode shows additional details but command still succeeds
         mockWebHost.RunCalls.Should().HaveCount(1);
+    }
+
+    // Helper class for managing temporary directories in tests
+    private sealed class TempDirectory : IDisposable
+    {
+        public string Path { get; }
+
+        public TempDirectory(string prefix)
+        {
+            Path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"{prefix}-{Guid.NewGuid()}");
+            Directory.CreateDirectory(Path);
+        }
+
+        public void Dispose()
+        {
+            if (Directory.Exists(Path))
+            {
+                try
+                {
+                    Directory.Delete(Path, recursive: true);
+                }
+                catch
+                {
+                    // Ignore cleanup errors
+                }
+            }
+        }
     }
 }

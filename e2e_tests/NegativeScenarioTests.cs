@@ -67,30 +67,46 @@ public class NegativeScenarioTests
     public async Task PollingHelpers_WhenFileNeverCreated_ReturnsFalse()
     {
         // Arrange - Create temp directory but never create the expected file
-        var testDir = Path.Combine(Path.GetTempPath(), $"polling-test-{Guid.NewGuid()}");
-        Directory.CreateDirectory(testDir);
+        using var testDir = new TempDirectory("polling-test");
 
-        try
+        _logger.LogInformation("Testing file polling timeout in {TestDir}", testDir.Path);
+
+        // Act - Wait for file that will never be created
+        var result = await PollingHelpers.WaitForFileAsync(
+            testDir.Path,
+            "nonexistent-*.ndjson",
+            timeoutMs: 500,
+            cancellationToken: TestContext.Current.CancellationToken,
+            logger: _logger);
+
+        // Assert
+        result.Should().BeFalse("should return false when file is never created before timeout");
+        _logger.LogInformation("File polling correctly timed out");
+    }
+
+    // Helper class for managing temporary directories in tests
+    private sealed class TempDirectory : IDisposable
+    {
+        public string Path { get; }
+
+        public TempDirectory(string prefix)
         {
-            _logger.LogInformation("Testing file polling timeout in {TestDir}", testDir);
-
-            // Act - Wait for file that will never be created
-            var result = await PollingHelpers.WaitForFileAsync(
-                testDir,
-                "nonexistent-*.ndjson",
-                timeoutMs: 500,
-                cancellationToken: TestContext.Current.CancellationToken,
-                logger: _logger);
-
-            // Assert
-            result.Should().BeFalse("should return false when file is never created before timeout");
-            _logger.LogInformation("File polling correctly timed out");
+            Path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"{prefix}-{Guid.NewGuid()}");
+            Directory.CreateDirectory(Path);
         }
-        finally
+
+        public void Dispose()
         {
-            if (Directory.Exists(testDir))
+            if (Directory.Exists(Path))
             {
-                Directory.Delete(testDir, recursive: true);
+                try
+                {
+                    Directory.Delete(Path, recursive: true);
+                }
+                catch
+                {
+                    // Ignore cleanup errors
+                }
             }
         }
     }

@@ -68,28 +68,20 @@ public class PidFileServiceTests : IDisposable
     public void Constructor_WhenBaseDirectoryContainsArtifacts_UsesThatDirectory()
     {
         // Arrange
-        var artifactsDir = Path.Combine(Path.GetTempPath(), $"artifacts-test-{Guid.NewGuid()}");
-        Directory.CreateDirectory(artifactsDir);
+        using var artifactsDir = new TempDirectory("artifacts-test");
 
         var mockEnv = new MockEnvironment
         {
             CurrentProcessId = 9999,
-            BaseDirectory = artifactsDir,
+            BaseDirectory = artifactsDir.Path,
             TempPath = _testDirectory
         };
 
-        try
-        {
-            // Act
-            var service = new PidFileService(mockEnv, _mockProcessProvider, _mockTimeProvider, _logger);
+        // Act
+        var service = new PidFileService(mockEnv, _mockProcessProvider, _mockTimeProvider, _logger);
 
-            // Assert
-            service.PidFilePath.Should().StartWith(artifactsDir, "should use BaseDirectory when it contains 'artifacts'");
-        }
-        finally
-        {
-            Directory.Delete(artifactsDir, recursive: true);
-        }
+        // Assert
+        service.PidFilePath.Should().StartWith(artifactsDir.Path, "should use BaseDirectory when it contains 'artifacts'");
     }
 
     [Fact]
@@ -456,8 +448,7 @@ public class PidFileServiceTests : IDisposable
     public void PidFilePath_UsesXdgRuntimeDir_WhenAvailable()
     {
         // Arrange
-        var xdgDir = Path.Combine(Path.GetTempPath(), $"xdg-test-{Guid.NewGuid()}");
-        Directory.CreateDirectory(xdgDir);
+        using var xdgDir = new TempDirectory("xdg-test");
 
         var regularDir = Path.Combine(Path.GetTempPath(), "regular-dir");
         var mockEnv = new MockEnvironment
@@ -466,19 +457,39 @@ public class PidFileServiceTests : IDisposable
             BaseDirectory = regularDir, // Not an artifacts directory (doesn't contain "artifacts" substring)
             TempPath = _testDirectory
         };
-        mockEnv.SetEnvironmentVariable("XDG_RUNTIME_DIR", xdgDir);
+        mockEnv.SetEnvironmentVariable("XDG_RUNTIME_DIR", xdgDir.Path);
 
-        try
+        // Act
+        var service = new PidFileService(mockEnv, _mockProcessProvider, _mockTimeProvider, _logger);
+
+        // Assert
+        service.PidFilePath.Should().StartWith(xdgDir.Path, "should use XDG_RUNTIME_DIR when available");
+    }
+
+    // Helper class for managing temporary directories in tests
+    private sealed class TempDirectory : IDisposable
+    {
+        public string Path { get; }
+
+        public TempDirectory(string prefix)
         {
-            // Act
-            var service = new PidFileService(mockEnv, _mockProcessProvider, _mockTimeProvider, _logger);
-
-            // Assert
-            service.PidFilePath.Should().StartWith(xdgDir, "should use XDG_RUNTIME_DIR when available");
+            Path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"{prefix}-{Guid.NewGuid()}");
+            Directory.CreateDirectory(Path);
         }
-        finally
+
+        public void Dispose()
         {
-            Directory.Delete(xdgDir, recursive: true);
+            if (Directory.Exists(Path))
+            {
+                try
+                {
+                    Directory.Delete(Path, recursive: true);
+                }
+                catch
+                {
+                    // Ignore cleanup errors
+                }
+            }
         }
     }
 }

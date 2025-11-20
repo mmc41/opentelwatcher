@@ -90,21 +90,16 @@ public class CliCommandExitCodeTests : IDisposable
         // Arrange - start an instance
         var port = TestHelpers.GetRandomPort();
         _portsToRelease.Add(port);
-        using var serverProcess = await TestHelpers.StartServerAsync(_executablePath, port, _solutionRoot);
+        var serverProcess = await TestHelpers.StartServerAsync(_executablePath, port, _solutionRoot);
         await TestHelpers.WaitForServerHealthyAsync(port);
 
-        try
-        {
-            // Act - try to start another instance on same port
-            var exitCode = await TestHelpers.RunCliCommandAsync(_executablePath, $"start --port {port}", _solutionRoot, timeoutSeconds: 5);
+        await using var serverWrapper = new ServerProcessWrapper(port, serverProcess, null, _logger);
 
-            // Assert
-            exitCode.Should().Be(1, "start command should return exit code 1 when instance already running");
-        }
-        finally
-        {
-            await TestHelpers.StopServerAsync(port, serverProcess);
-        }
+        // Act - try to start another instance on same port
+        var exitCode = await TestHelpers.RunCliCommandAsync(_executablePath, $"start --port {port}", _solutionRoot, timeoutSeconds: 5);
+
+        // Assert
+        exitCode.Should().Be(1, "start command should return exit code 1 when instance already running");
     }
 
     [Fact]
@@ -140,28 +135,20 @@ public class CliCommandExitCodeTests : IDisposable
 
         var outputDir = Path.Combine(_solutionRoot, "artifacts", "test-telemetry", "daemon");
 
-        try
-        {
-            // Act - start in daemon mode
-            _logger.LogInformation("Starting daemon mode with output dir {OutputDir}", outputDir);
-            var exitCode = await TestHelpers.RunCliCommandAsync(_executablePath, $"start --daemon --port {port} --output-dir \"{outputDir}\"", _solutionRoot, timeoutSeconds: 15);
+        await using var serverWrapper = new ServerProcessWrapper(port, null, outputDir, _logger);
 
-            // Assert
-            _logger.LogInformation("Daemon start returned exit code {ExitCode}", exitCode);
-            exitCode.Should().Be(0, "daemon mode start should return exit code 0 on success");
+        // Act - start in daemon mode
+        _logger.LogInformation("Starting daemon mode with output dir {OutputDir}", outputDir);
+        var exitCode = await TestHelpers.RunCliCommandAsync(_executablePath, $"start --daemon --port {port} --output-dir \"{outputDir}\"", _solutionRoot, timeoutSeconds: 15);
 
-            // Verify server is running
-            _logger.LogInformation("Waiting for server to become healthy");
-            await TestHelpers.WaitForServerHealthyAsync(port);
-            _logger.LogInformation("Server is healthy");
-        }
-        finally
-        {
-            // Cleanup - stop the daemon
-            _logger.LogInformation("Stopping daemon on port {Port}", port);
-            await TestHelpers.StopServerOnPortAsync(port);
-            TestHelpers.CleanupOutputDirectory(outputDir);
-        }
+        // Assert
+        _logger.LogInformation("Daemon start returned exit code {ExitCode}", exitCode);
+        exitCode.Should().Be(0, "daemon mode start should return exit code 0 on success");
+
+        // Verify server is running
+        _logger.LogInformation("Waiting for server to become healthy");
+        await TestHelpers.WaitForServerHealthyAsync(port);
+        _logger.LogInformation("Server is healthy");
     }
 
     public void Dispose()
@@ -174,4 +161,40 @@ public class CliCommandExitCodeTests : IDisposable
     }
 
     #endregion
+
+    // Helper class for managing server process lifecycle
+    private sealed class ServerProcessWrapper : IAsyncDisposable
+    {
+        private readonly int _port;
+        private readonly Process? _process;
+        private readonly string? _outputDir;
+        private readonly ILogger _logger;
+
+        public ServerProcessWrapper(int port, Process? process, string? outputDir, ILogger logger)
+        {
+            _port = port;
+            _process = process;
+            _outputDir = outputDir;
+            _logger = logger;
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            _logger.LogInformation("Stopping server on port {Port}", _port);
+
+            if (_process != null)
+            {
+                await TestHelpers.StopServerAsync(_port, _process);
+            }
+            else
+            {
+                await TestHelpers.StopServerOnPortAsync(_port);
+            }
+
+            if (_outputDir != null)
+            {
+                TestHelpers.CleanupOutputDirectory(_outputDir);
+            }
+        }
+    }
 }

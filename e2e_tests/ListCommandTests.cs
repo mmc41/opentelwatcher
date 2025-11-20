@@ -38,11 +38,11 @@ public class ListCommandTests : IAsyncLifetime
         await File.WriteAllTextAsync(
             Path.Combine(testDir, "traces.20251116_143022_456.ndjson"),
             "{\"resourceSpans\":[]}\n",
-            CancellationToken.None);
+            TestContext.Current.CancellationToken);
         await File.WriteAllTextAsync(
             Path.Combine(testDir, "logs.20251116_143022_456.ndjson"),
             "{\"resourceLogs\":[]}\n",
-            CancellationToken.None);
+            TestContext.Current.CancellationToken);
 
         // Act
         _logger.LogInformation("Running list command");
@@ -79,15 +79,15 @@ public class ListCommandTests : IAsyncLifetime
         await File.WriteAllTextAsync(
             Path.Combine(testDir, "traces.20251116_143022_456.ndjson"),
             "{\"resourceSpans\":[]}\n",
-            CancellationToken.None);
+            TestContext.Current.CancellationToken);
         await File.WriteAllTextAsync(
             Path.Combine(testDir, "traces.20251116_143022_456.errors.ndjson"),
             "{\"resourceSpans\":[]}\n",
-            CancellationToken.None);
+            TestContext.Current.CancellationToken);
         await File.WriteAllTextAsync(
             Path.Combine(testDir, "logs.20251116_143022_456.errors.ndjson"),
             "{\"resourceLogs\":[]}\n",
-            CancellationToken.None);
+            TestContext.Current.CancellationToken);
 
         // Act
         var result = await RunListCommand(testDir, "--errors-only");
@@ -108,7 +108,7 @@ public class ListCommandTests : IAsyncLifetime
         await File.WriteAllTextAsync(
             Path.Combine(testDir, traceFile),
             "{\"resourceSpans\":[]}\n",
-            CancellationToken.None);
+            TestContext.Current.CancellationToken);
 
         // Act
         var result = await RunListCommand(testDir, "--json");
@@ -156,7 +156,7 @@ public class ListCommandTests : IAsyncLifetime
         // Arrange - create test file
         var testDir = TestHelpers.GetTestOutputDir("list-command/verbose");
         var testFile = Path.Combine(testDir, "traces.20251116_143022_456.ndjson");
-        await File.WriteAllTextAsync(testFile, "{\"resourceSpans\":[]}\n", CancellationToken.None);
+        await File.WriteAllTextAsync(testFile, "{\"resourceSpans\":[]}\n", TestContext.Current.CancellationToken);
 
         // Act
         var result = await RunListCommand(testDir, "--verbose");
@@ -178,7 +178,7 @@ public class ListCommandTests : IAsyncLifetime
         await File.WriteAllTextAsync(
             Path.Combine(testDir, "traces.20251116_143022_456.ndjson"),
             "{\"resourceSpans\":[]}\n",
-            CancellationToken.None);
+            TestContext.Current.CancellationToken);
 
         // Act - run list without starting watcher instance
         var result = await RunListCommand(testDir);
@@ -196,17 +196,17 @@ public class ListCommandTests : IAsyncLifetime
         await File.WriteAllTextAsync(
             Path.Combine(testDir, "traces.20251116_100000_000.ndjson"),
             "{\"resourceSpans\":[]}\n",
-            CancellationToken.None);
+            TestContext.Current.CancellationToken);
         await Task.Delay(E2EConstants.Delays.TimestampDifferentiationMs, TestContext.Current.CancellationToken); // Ensure different timestamps
         await File.WriteAllTextAsync(
             Path.Combine(testDir, "logs.20251116_110000_000.ndjson"),
             "{\"resourceLogs\":[]}\n",
-            CancellationToken.None);
+            TestContext.Current.CancellationToken);
         await Task.Delay(E2EConstants.Delays.TimestampDifferentiationMs, TestContext.Current.CancellationToken);
         await File.WriteAllTextAsync(
             Path.Combine(testDir, "metrics.20251116_120000_000.ndjson"),
             "{\"resourceMetrics\":[]}\n",
-            CancellationToken.None);
+            TestContext.Current.CancellationToken);
 
         // Act
         var result = await RunListCommand(testDir);

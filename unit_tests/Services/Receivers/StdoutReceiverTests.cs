@@ -1,9 +1,9 @@
 using System.Collections.Concurrent;
 using FluentAssertions;
-using Microsoft.Extensions.Logging.Abstractions;
 using OpenTelWatcher.Configuration;
 using OpenTelWatcher.Models;
 using OpenTelWatcher.Services.Receivers;
+using UnitTests.Helpers;
 using Xunit;
 
 namespace OpenTelWatcher.Tests.Services.Receivers;
@@ -14,7 +14,7 @@ public class StdoutReceiverTests
     public async Task WriteAsync_FormatsOutput_WithTimestampAndSignal()
     {
         // Arrange
-        var receiver = new StdoutReceiver(NullLogger<StdoutReceiver>.Instance);
+        var receiver = new StdoutReceiver(TestLoggerFactory.CreateLogger<StdoutReceiver>());
         var timestamp = new DateTimeOffset(2025, 1, 19, 12, 30, 45, 123, TimeSpan.Zero);
         var item = new TelemetryItem(
             SignalType.Traces,
@@ -22,9 +22,9 @@ public class StdoutReceiverTests
             false,
             timestamp);
 
-        var output = CaptureConsoleOutput(() =>
+        var output = await CaptureConsoleOutputAsync(async () =>
         {
-            receiver.WriteAsync(item, CancellationToken.None).Wait();
+            await receiver.WriteAsync(item, TestContext.Current.CancellationToken);
         });
 
         // Assert
@@ -43,12 +43,12 @@ public class StdoutReceiverTests
         string expectedColor)
     {
         // Arrange
-        var receiver = new StdoutReceiver(NullLogger<StdoutReceiver>.Instance);
+        var receiver = new StdoutReceiver(TestLoggerFactory.CreateLogger<StdoutReceiver>());
         var item = new TelemetryItem(signal, "{}\n", isError, DateTimeOffset.UtcNow);
 
-        var output = CaptureConsoleOutput(() =>
+        var output = await CaptureConsoleOutputAsync(async () =>
         {
-            receiver.WriteAsync(item, CancellationToken.None).Wait();
+            await receiver.WriteAsync(item, TestContext.Current.CancellationToken);
         });
 
         // Assert - Check that output contains the expected color code (may have other output from parallel tests)
@@ -64,12 +64,12 @@ public class StdoutReceiverTests
     public async Task WriteAsync_ColorizesErrors_InRed(SignalType signal)
     {
         // Arrange
-        var receiver = new StdoutReceiver(NullLogger<StdoutReceiver>.Instance);
+        var receiver = new StdoutReceiver(TestLoggerFactory.CreateLogger<StdoutReceiver>());
         var item = new TelemetryItem(signal, "{}\n", IsError: true, DateTimeOffset.UtcNow);
 
-        var output = CaptureConsoleOutput(() =>
+        var output = await CaptureConsoleOutputAsync(async () =>
         {
-            receiver.WriteAsync(item, CancellationToken.None).Wait();
+            await receiver.WriteAsync(item, TestContext.Current.CancellationToken);
         });
 
         // Assert - Check that output contains red color code and signal label
@@ -81,13 +81,13 @@ public class StdoutReceiverTests
     public async Task WriteAsync_PreservesRawNdjson_NoFormatting()
     {
         // Arrange
-        var receiver = new StdoutReceiver(NullLogger<StdoutReceiver>.Instance);
+        var receiver = new StdoutReceiver(TestLoggerFactory.CreateLogger<StdoutReceiver>());
         var complexJson = "{\"nested\":{\"array\":[1,2,3]},\"value\":\"test\"}\n";
         var item = new TelemetryItem(SignalType.Traces, complexJson, false, DateTimeOffset.UtcNow);
 
-        var output = CaptureConsoleOutput(() =>
+        var output = await CaptureConsoleOutputAsync(async () =>
         {
-            receiver.WriteAsync(item, CancellationToken.None).Wait();
+            await receiver.WriteAsync(item, TestContext.Current.CancellationToken);
         });
 
         // Assert - JSON should be preserved exactly (not prettified)
@@ -98,7 +98,7 @@ public class StdoutReceiverTests
     public async Task WriteAsync_ThreadSafe_ConcurrentWrites()
     {
         // Arrange
-        var receiver = new StdoutReceiver(NullLogger<StdoutReceiver>.Instance);
+        var receiver = new StdoutReceiver(TestLoggerFactory.CreateLogger<StdoutReceiver>());
         var items = Enumerable.Range(0, 100).Select(i => new TelemetryItem(
             SignalType.Traces,
             $"{{\"id\":{i}}}\n",
@@ -122,12 +122,12 @@ public class StdoutReceiverTests
     public async Task WriteAsync_TrimsTrailingNewline_FromNdjson()
     {
         // Arrange
-        var receiver = new StdoutReceiver(NullLogger<StdoutReceiver>.Instance);
+        var receiver = new StdoutReceiver(TestLoggerFactory.CreateLogger<StdoutReceiver>());
         var item = new TelemetryItem(SignalType.Traces, "{\"id\":1}\n", false, DateTimeOffset.UtcNow);
 
-        var output = CaptureConsoleOutput(() =>
+        var output = await CaptureConsoleOutputAsync(async () =>
         {
-            receiver.WriteAsync(item, CancellationToken.None).Wait();
+            await receiver.WriteAsync(item, TestContext.Current.CancellationToken);
         });
 
         // Assert - should not have double newline
@@ -135,14 +135,14 @@ public class StdoutReceiverTests
     }
 
     // Helper method
-    private string CaptureConsoleOutput(Action action)
+    private async Task<string> CaptureConsoleOutputAsync(Func<Task> action)
     {
         var originalOut = Console.Out;
         try
         {
             using var writer = new StringWriter();
             Console.SetOut(writer);
-            action();
+            await action();
             return writer.ToString();
         }
         finally

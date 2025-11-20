@@ -1,5 +1,4 @@
 using FluentAssertions;
-using Microsoft.Extensions.Logging.Abstractions;
 using OpenTelWatcher.Configuration;
 using OpenTelWatcher.Models;
 using OpenTelWatcher.Services.Receivers;
@@ -20,7 +19,7 @@ public class FileReceiverTests : FileBasedTestBase
             TestOutputDir,
             ".ndjson",
             100,
-            NullLogger<FileReceiver>.Instance);
+            TestLoggerFactory.CreateLogger<FileReceiver>());
 
         var item = new TelemetryItem(
             SignalType.Traces,
@@ -48,7 +47,7 @@ public class FileReceiverTests : FileBasedTestBase
             TestOutputDir,
             ".errors.ndjson",
             100,
-            NullLogger<FileReceiver>.Instance);
+            TestLoggerFactory.CreateLogger<FileReceiver>());
 
         var item = new TelemetryItem(
             SignalType.Logs,
@@ -74,7 +73,7 @@ public class FileReceiverTests : FileBasedTestBase
             TestOutputDir,
             ".ndjson",
             100,
-            NullLogger<FileReceiver>.Instance);
+            TestLoggerFactory.CreateLogger<FileReceiver>());
 
         receiver.Dispose();
 
