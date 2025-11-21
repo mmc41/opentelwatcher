@@ -8,7 +8,7 @@ namespace UnitTests.Serialization;
 public class NdjsonWriterTests
 {
     [Fact]
-    public void FormatAsNdjsonLine_WithValidJson_AppendsNewline()
+    public void FormatAsNdjsonLine_WithValidJson_AppendsExactlyOneNewline()
     {
         // Arrange
         var json = """{"test": "value"}""";
@@ -17,21 +17,6 @@ public class NdjsonWriterTests
         var ndjsonLine = NdjsonWriter.FormatAsNdjsonLine(json);
 
         // Assert
-        ndjsonLine.Should().EndWith("\n");
-        ndjsonLine.Should().StartWith("{");
-    }
-
-    [Fact]
-    public void FormatAsNdjsonLine_WithValidJson_DoesNotAddExtraNewlines()
-    {
-        // Arrange
-        var json = """{"test": "value"}""";
-
-        // Act
-        var ndjsonLine = NdjsonWriter.FormatAsNdjsonLine(json);
-
-        // Assert
-        // Should have exactly one newline at the end
         ndjsonLine.Should().Be(json + "\n");
         ndjsonLine.Count(c => c == '\n').Should().Be(1);
     }

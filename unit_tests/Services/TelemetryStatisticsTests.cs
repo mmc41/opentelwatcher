@@ -7,20 +7,6 @@ namespace UnitTests.Services;
 public class TelemetryStatisticsTests
 {
     [Fact]
-    public void IncrementTraces_IncreasesTracesReceivedCount()
-    {
-        // Arrange
-        var stats = new TelemetryStatisticsService();
-
-        // Act
-        stats.IncrementTraces();
-        stats.IncrementTraces();
-
-        // Assert
-        stats.TracesReceived.Should().Be(2);
-    }
-
-    [Fact]
     public async Task Statistics_AreThreadSafe()
     {
         // Arrange

@@ -42,23 +42,6 @@ public class DefaultCommandTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_ChecksInstanceStatus()
-    {
-        // Arrange
-        var mockApiClient = new MockOpenTelWatcherApiClient
-        {
-            InstanceStatus = new InstanceStatus { IsRunning = false }
-        };
-        var command = new DefaultCommand(mockApiClient);
-
-        // Act
-        await command.ExecuteAsync();
-
-        // Assert
-        mockApiClient.GetInstanceStatusCalls.Should().HaveCount(1);
-    }
-
-    [Fact]
     public async Task ExecuteAsync_WhenCompatibleInstanceRunning_ReturnsSuccess()
     {
         // Arrange

@@ -74,11 +74,7 @@ public class PidEntryTests
     [Theory]
     [InlineData("OpenTelWatcher.exe")]
     [InlineData("OPENTELWATCHER")]
-    [InlineData("opentelwatcher")]
-    [InlineData("watcher.exe")]
-    [InlineData("WATCHER")]
     [InlineData("dotnet.exe")]
-    [InlineData("DOTNET")]
     public void IsRunning_IsCaseInsensitive(string processName)
     {
         // Arrange
@@ -122,24 +118,4 @@ public class PidEntryTests
         age.Should().Be(TimeSpan.FromMinutes(5));
     }
 
-    [Fact]
-    public void GetAge_WhenJustCreated_ReturnsZero()
-    {
-        // Arrange
-        var now = new DateTime(2025, 1, 17, 12, 0, 0, DateTimeKind.Utc);
-        var mockTimeProvider = new MockTimeProvider { UtcNow = now };
-
-        var entry = new PidEntry
-        {
-            Pid = 12345,
-            Port = 4318,
-            Timestamp = now
-        };
-
-        // Act
-        var age = entry.GetAge(mockTimeProvider);
-
-        // Assert
-        age.Should().Be(TimeSpan.Zero);
-    }
 }

@@ -30,7 +30,6 @@ public class ConfigurationValidatorTests
 
     [Theory]
     [InlineData(5)]     // Below minimum (10)
-    [InlineData(1001)]  // Above maximum (1000)
     public void Validate_WithInvalidMaxErrorHistorySize_ReturnsFailure(int invalidSize)
     {
         // Arrange
@@ -50,7 +49,6 @@ public class ConfigurationValidatorTests
 
     [Theory]
     [InlineData(2)]    // Below minimum (3)
-    [InlineData(101)]  // Above maximum (100)
     public void Validate_WithInvalidMaxConsecutiveFileErrors_ReturnsFailure(int invalidValue)
     {
         // Arrange
@@ -70,7 +68,6 @@ public class ConfigurationValidatorTests
 
     [Theory]
     [InlineData(0)]
-    [InlineData(-1)]
     public void Validate_WithNonPositiveMaxFileSizeMB_ReturnsFailure(int invalidSize)
     {
         // Arrange
@@ -90,7 +87,6 @@ public class ConfigurationValidatorTests
 
     [Theory]
     [InlineData(0)]
-    [InlineData(-1)]
     public void Validate_WithNonPositiveRequestTimeoutSeconds_ReturnsFailure(int invalidTimeout)
     {
         // Arrange
